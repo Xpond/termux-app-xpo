@@ -1,0 +1,64 @@
+/**
+ * XPort Bootstrap Integration for Gradle Build System
+ * 
+ * This script integrates the minimal bootstrap build process with the Android app build.
+ * It handles copying the built bootstrap packages into the app's assets directory.
+ */
+
+// Task to build the minimal bootstrap components
+task buildMinimalBootstrap(type: Exec) {
+    group 'XPort'
+    description 'Build minimal bootstrap components for XPort terminal'
+    
+    workingDir rootProject.projectDir.parentFile
+    commandLine './scripts/build-minimal-bootstrap.sh', 'build'
+    
+    doFirst {
+        println "Building XPort minimal bootstrap components..."
+    }
+    
+    doLast {
+        println "Bootstrap build completed. Packages available in bootstrap/output/"
+    }
+}
+
+// Task to check bootstrap build requirements
+task checkBootstrapRequirements(type: Exec) {
+    group 'XPort'
+    description 'Check if Android NDK and other requirements are available for bootstrap build'
+    
+    workingDir rootProject.projectDir.parentFile
+    commandLine './scripts/build-minimal-bootstrap.sh', 'check'
+}
+
+// Task to copy ARM64 bootstrap to assets (for immediate testing)
+task copyBootstrapToAssets {
+    group 'XPort'
+    description 'Copy ARM64 bootstrap package to app assets for immediate testing'
+    
+    doLast {
+        def bootstrapFile = file("${rootProject.projectDir.parentFile}/bootstrap/output/xport-bootstrap-arm64-v8a.zip")
+        def assetsDir = file("${project.projectDir}/src/main/assets")
+        
+        if (!assetsDir.exists()) {
+            assetsDir.mkdirs()
+        }
+        
+        if (bootstrapFile.exists()) {
+            copy {
+                from bootstrapFile
+                into assetsDir
+            }
+            println "Copied ARM64 bootstrap (${bootstrapFile.length()} bytes) to assets/"
+        } else {
+            throw new GradleException("Bootstrap file not found: ${bootstrapFile}. Run 'buildMinimalBootstrap' first.")
+        }
+    }
+}
+
+// Make sure bootstrap is copied before building
+tasks.preBuild.dependsOn copyBootstrapToAssets
+
+// Gradle task dependencies
+buildMinimalBootstrap.dependsOn checkBootstrapRequirements
+copyBootstrapToAssets.dependsOn buildMinimalBootstrap

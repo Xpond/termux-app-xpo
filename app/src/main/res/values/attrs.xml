@@ -2,4 +2,17 @@
 <resources>
     <attr name="termuxActivityDrawerBackground" format="reference" />
     <attr name="termuxActivityDrawerImageTint" format="reference" />
+    
+    <!-- Preference attributes -->
+    <attr name="key" format="string" />
+    <attr name="summary" format="string|reference" />
+    <attr name="fragment" format="string" />
+    <attr name="isPreferenceVisible" format="boolean" />
+    <attr name="persistent" format="boolean" />
+    
+    <!-- Additional preference attributes -->
+    <attr name="useSimpleSummaryProvider" format="boolean" />
+    <attr name="defaultValue" format="string|boolean|integer|reference" />
+    <attr name="summaryOff" format="string|reference" />
+    <attr name="summaryOn" format="string|reference" />
 </resources>

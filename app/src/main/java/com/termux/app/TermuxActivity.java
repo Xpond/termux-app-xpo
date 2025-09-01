@@ -25,9 +25,12 @@ import android.widget.ImageButton;
 import android.widget.ListView;
 import android.widget.RelativeLayout;
 import android.widget.Toast;
+import java.io.*;
+import java.net.*;
+import java.util.zip.*;
+import android.os.AsyncTask;
 
-import com.termux.R;
-import com.termux.app.api.file.FileReceiverActivity;
+import com.xport.terminal.R;
 import com.termux.app.terminal.TermuxActivityRootView;
 import com.termux.app.terminal.TermuxTerminalSessionActivityClient;
 import com.termux.app.terminal.io.TermuxTerminalExtraKeys;
@@ -39,10 +42,8 @@ import com.termux.shared.android.PermissionUtils;
 import com.termux.shared.data.DataUtils;
 import com.termux.shared.termux.TermuxConstants;
 import com.termux.shared.termux.TermuxConstants.TERMUX_APP.TERMUX_ACTIVITY;
-import com.termux.app.activities.HelpActivity;
-import com.termux.app.activities.SettingsActivity;
-import com.termux.shared.termux.crash.TermuxCrashUtils;
 import com.termux.shared.termux.settings.preferences.TermuxAppSharedPreferences;
+import com.termux.shared.termux.crash.TermuxCrashUtils;
 import com.termux.app.terminal.TermuxSessionsListViewController;
 import com.termux.app.terminal.io.TerminalToolbarViewPager;
 import com.termux.app.terminal.TermuxTerminalViewClient;
@@ -185,8 +186,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private static final int CONTEXT_MENU_KILL_PROCESS_ID = 4;
     private static final int CONTEXT_MENU_STYLING_ID = 5;
     private static final int CONTEXT_MENU_TOGGLE_KEEP_SCREEN_ON = 6;
-    private static final int CONTEXT_MENU_HELP_ID = 7;
-    private static final int CONTEXT_MENU_SETTINGS_ID = 8;
     private static final int CONTEXT_MENU_REPORT_ID = 9;
 
     private static final String ARG_TERMINAL_TOOLBAR_TEXT_INPUT = "terminal_toolbar_text_input";
@@ -205,13 +204,13 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         // Delete ReportInfo serialized object files from cache older than 14 days
         ReportActivity.deleteReportInfoFilesOlderThanXDays(this, 14, false);
 
+        super.onCreate(savedInstanceState);
+
         // Load Termux app SharedProperties from disk
         mProperties = TermuxAppSharedProperties.getProperties();
         reloadProperties();
 
         setActivityTheme();
-
-        super.onCreate(savedInstanceState);
 
         setContentView(R.layout.activity_termux);
 
@@ -223,6 +222,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             mIsInvalidState = true;
             return;
         }
+
+        // Check and download bootstrap if needed
+        // checkAndDownloadBootstrap(); // Temporarily disabled for debugging
 
         setMargins();
 
@@ -245,7 +247,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         setTerminalToolbarView(savedInstanceState);
 
-        setSettingsButtonView();
 
         setNewSessionButtonView();
 
@@ -253,7 +254,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         registerForContextMenu(mTerminalView);
 
-        FileReceiverActivity.updateFileReceiverActivityComponentsState(this);
 
         try {
             // Start the {@link TermuxService} and make it run regardless of who is bound to it
@@ -295,7 +295,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         if (mTermuxTerminalViewClient != null)
             mTermuxTerminalViewClient.onStart();
 
-        if (mPreferences.isTerminalMarginAdjustmentEnabled())
+        if (mPreferences != null && mPreferences.isTerminalMarginAdjustmentEnabled())
             addTermuxActivityRootViewGlobalLayoutListener();
 
         registerTermuxActivityBroadcastReceiver();
@@ -341,7 +341,10 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         removeTermuxActivityRootViewGlobalLayoutListener();
 
         unregisterTermuxActivityBroadcastReceiver();
-        getDrawer().closeDrawers();
+        DrawerLayout drawer = getDrawer();
+        if (drawer != null) {
+            drawer.closeDrawers();
+        }
     }
 
     @Override
@@ -563,12 +566,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
 
 
-    private void setSettingsButtonView() {
-        ImageButton settingsButton = findViewById(R.id.settings_button);
-        settingsButton.setOnClickListener(v -> {
-            ActivityUtils.startActivity(this, new Intent(this, SettingsActivity.class));
-        });
-    }
 
     private void setNewSessionButtonView() {
         View newSessionButton = findViewById(R.id.new_session_button);
@@ -645,8 +642,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         menu.add(Menu.NONE, CONTEXT_MENU_KILL_PROCESS_ID, Menu.NONE, getResources().getString(R.string.action_kill_process, getCurrentSession().getPid())).setEnabled(currentSession.isRunning());
         menu.add(Menu.NONE, CONTEXT_MENU_STYLING_ID, Menu.NONE, R.string.action_style_terminal);
         menu.add(Menu.NONE, CONTEXT_MENU_TOGGLE_KEEP_SCREEN_ON, Menu.NONE, R.string.action_toggle_keep_screen_on).setCheckable(true).setChecked(mPreferences.shouldKeepScreenOn());
-        menu.add(Menu.NONE, CONTEXT_MENU_HELP_ID, Menu.NONE, R.string.action_open_help);
-        menu.add(Menu.NONE, CONTEXT_MENU_SETTINGS_ID, Menu.NONE, R.string.action_open_settings);
         menu.add(Menu.NONE, CONTEXT_MENU_REPORT_ID, Menu.NONE, R.string.action_report_issue);
     }
 
@@ -688,12 +683,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 return true;
             case CONTEXT_MENU_TOGGLE_KEEP_SCREEN_ON:
                 toggleKeepScreenOn();
-                return true;
-            case CONTEXT_MENU_HELP_ID:
-                ActivityUtils.startActivity(this, new Intent(this, HelpActivity.class));
-                return true;
-            case CONTEXT_MENU_SETTINGS_ID:
-                ActivityUtils.startActivity(this, new Intent(this, SettingsActivity.class));
                 return true;
             case CONTEXT_MENU_REPORT_ID:
                 mTermuxTerminalViewClient.reportIssueFromTranscript();
@@ -981,7 +970,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         setMargins();
         setTerminalToolbarHeight();
 
-        FileReceiverActivity.updateFileReceiverActivityComponentsState(this);
 
         if (mTermuxTerminalSessionActivityClient != null)
             mTermuxTerminalSessionActivityClient.onReloadActivityStyling();
@@ -1008,6 +996,100 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         Intent intent = new Intent(context, TermuxActivity.class);
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         return intent;
+    }
+
+    private void checkAndDownloadBootstrap() {
+        File bootstrapDir = new File(TermuxConstants.TERMUX_FILES_DIR_PATH + "/usr");
+        File bootstrapMarker = new File(TermuxConstants.TERMUX_FILES_DIR_PATH + "/.bootstrap_installed");
+        
+        if (!bootstrapMarker.exists()) {
+            new BootstrapDownloadTask().execute();
+        }
+    }
+
+    private class BootstrapDownloadTask extends AsyncTask<Void, String, Boolean> {
+        @Override
+        protected void onPreExecute() {
+            Toast.makeText(TermuxActivity.this, "Downloading bootstrap...", Toast.LENGTH_SHORT).show();
+        }
+
+        @Override
+        protected Boolean doInBackground(Void... voids) {
+            try {
+                String bootstrapUrl = "http://168.231.118.168:8000/xport-bootstrap-arm64-v8a.zip";
+                File downloadFile = new File(TermuxConstants.TERMUX_FILES_DIR_PATH + "/bootstrap.zip");
+                
+                // Download bootstrap
+                URL url = new URL(bootstrapUrl);
+                URLConnection connection = url.openConnection();
+                InputStream input = connection.getInputStream();
+                FileOutputStream output = new FileOutputStream(downloadFile);
+                
+                byte[] buffer = new byte[4096];
+                int bytesRead;
+                while ((bytesRead = input.read(buffer)) != -1) {
+                    output.write(buffer, 0, bytesRead);
+                }
+                
+                input.close();
+                output.close();
+                
+                // Extract bootstrap
+                extractZip(downloadFile, new File(TermuxConstants.TERMUX_FILES_DIR_PATH));
+                
+                // Mark as installed
+                File marker = new File(TermuxConstants.TERMUX_FILES_DIR_PATH + "/.bootstrap_installed");
+                marker.createNewFile();
+                
+                // Cleanup
+                downloadFile.delete();
+                
+                return true;
+            } catch (Exception e) {
+                Logger.logError(LOG_TAG, "Bootstrap download failed: " + e.getMessage());
+                return false;
+            }
+        }
+
+        @Override
+        protected void onPostExecute(Boolean success) {
+            if (success) {
+                Toast.makeText(TermuxActivity.this, "Bootstrap installed successfully!", Toast.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(TermuxActivity.this, "Bootstrap download failed", Toast.LENGTH_SHORT).show();
+            }
+        }
+
+        private void extractZip(File zipFile, File targetDir) throws IOException {
+            ZipInputStream zis = new ZipInputStream(new FileInputStream(zipFile));
+            ZipEntry entry;
+            
+            while ((entry = zis.getNextEntry()) != null) {
+                File file = new File(targetDir, entry.getName());
+                
+                if (entry.isDirectory()) {
+                    file.mkdirs();
+                } else {
+                    file.getParentFile().mkdirs();
+                    FileOutputStream fos = new FileOutputStream(file);
+                    
+                    byte[] buffer = new byte[1024];
+                    int length;
+                    while ((length = zis.read(buffer)) > 0) {
+                        fos.write(buffer, 0, length);
+                    }
+                    
+                    fos.close();
+                    
+                    // Set executable permissions for binaries
+                    if (file.getPath().contains("/bin/") || file.getPath().contains("/usr/bin/")) {
+                        file.setExecutable(true);
+                    }
+                }
+                zis.closeEntry();
+            }
+            zis.close();
+        }
     }
 
 }

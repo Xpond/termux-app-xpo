@@ -106,7 +106,7 @@ public class ExtraKeysInfo {
      *                           aliases for the actual key names. You can create your own or
      *                           optionally pass {@link ExtraKeysConstants#CONTROL_CHARS_ALIASES}.
      */
-    public ExtraKeysInfo(@NonNull String propertiesInfo, String style,
+    public ExtraKeysInfo(String propertiesInfo, String style,
                          @NonNull ExtraKeysConstants.ExtraKeyDisplayMap extraKeyAliasMap) throws JSONException {
         mButtons = initExtraKeysInfo(propertiesInfo, getCharDisplayMapForStyle(style), extraKeyAliasMap);
     }
@@ -131,10 +131,13 @@ public class ExtraKeysInfo {
         mButtons = initExtraKeysInfo(propertiesInfo, extraKeyDisplayMap, extraKeyAliasMap);
     }
 
-    private ExtraKeyButton[][] initExtraKeysInfo(@NonNull String propertiesInfo,
+    private ExtraKeyButton[][] initExtraKeysInfo(String propertiesInfo,
                                                  @NonNull ExtraKeysConstants.ExtraKeyDisplayMap extraKeyDisplayMap,
                                                  @NonNull ExtraKeysConstants.ExtraKeyDisplayMap extraKeyAliasMap) throws JSONException {
         // Convert String propertiesInfo to Array of Arrays
+        if (propertiesInfo == null || propertiesInfo.trim().isEmpty()) {
+            propertiesInfo = "[[\"ESC\",\"TAB\",\"CTRL\",\"ALT\",\"UP\",\"DOWN\",\"LEFT\",\"RIGHT\"]]"; // Default keys
+        }
         JSONArray arr = new JSONArray(propertiesInfo);
         Object[][] matrix = new Object[arr.length()][];
         for (int i = 0; i < arr.length(); i++) {
@@ -196,6 +199,9 @@ public class ExtraKeysInfo {
 
     @NonNull
     public static ExtraKeysConstants.ExtraKeyDisplayMap getCharDisplayMapForStyle(String style) {
+        if (style == null) {
+            style = "default";
+        }
         switch (style) {
             case "arrows-only":
                 return EXTRA_KEY_DISPLAY_MAPS.ARROWS_ONLY_CHAR_DISPLAY;

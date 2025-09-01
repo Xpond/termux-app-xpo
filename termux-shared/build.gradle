@@ -1,7 +1,7 @@
 apply plugin: 'com.android.library'
-apply plugin: 'maven-publish'
 
 android {
+    namespace 'com.termux.shared'
     compileSdkVersion project.properties.compileSdkVersion.toInteger()
     ndkVersion = System.getenv("JITPACK_NDK_VERSION") ?: project.properties.ndkVersion
 
@@ -70,22 +70,4 @@ dependencies {
     coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:1.1.5"
 }
 
-task sourceJar(type: Jar) {
-    from android.sourceSets.main.java.srcDirs
-    classifier "sources"
-}
-
-afterEvaluate {
-    publishing {
-        publications {
-            // Creates a Maven publication called "release".
-            release(MavenPublication) {
-                from components.release
-                groupId = 'com.termux'
-                artifactId = 'termux-shared'
-                version = '0.118.0'
-                artifact(sourceJar)
-            }
-        }
-    }
-}
+// Publishing configuration removed for simplified build
