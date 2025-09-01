@@ -161,7 +161,6 @@ public class TermuxAmSocketServer {
                                                           @NonNull LocalSocketRunConfig localSocketRunConfig,
                                                           @Nullable LocalClientSocket clientSocket) {
         TermuxPluginUtils.sendPluginCommandErrorNotification(context, LOG_TAG,
-            localSocketRunConfig.getTitle() + " Socket Server Error", error.getMinimalErrorString(),
             LocalSocketManager.getErrorMarkdownString(error, localSocketRunConfig, clientSocket));
     }
 

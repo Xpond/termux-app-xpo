@@ -3,10 +3,8 @@ package com.termux.app;
 import android.app.Application;
 import android.content.Context;
 
-import com.termux.BuildConfig;
 import com.termux.shared.errors.Error;
 import com.termux.shared.logger.Logger;
-import com.termux.shared.termux.TermuxBootstrap;
 import com.termux.shared.termux.TermuxConstants;
 import com.termux.shared.termux.crash.TermuxCrashUtils;
 import com.termux.shared.termux.file.TermuxFileUtils;
@@ -34,8 +32,8 @@ public class TermuxApplication extends Application {
 
         Logger.logDebug("Starting Application");
 
-        // Set TermuxBootstrap.TERMUX_APP_PACKAGE_MANAGER and TermuxBootstrap.TERMUX_APP_PACKAGE_VARIANT
-        TermuxBootstrap.setTermuxPackageManagerAndVariant(BuildConfig.TERMUX_PACKAGE_VARIANT);
+        // Initialize XPort minimal bootstrap system
+        com.xport.terminal.XPortBootstrap.ensureBootstrapInstalled(context);
 
         // Init app wide SharedProperties loaded from termux.properties
         TermuxAppSharedProperties properties = TermuxAppSharedProperties.init(context);

@@ -1,14 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 
 <!DOCTYPE resources [
-    <!ENTITY TERMUX_PACKAGE_NAME "com.termux">
-    <!ENTITY TERMUX_APP_NAME "Termux">
-    <!ENTITY TERMUX_API_APP_NAME "Termux:API">
-    <!ENTITY TERMUX_BOOT_APP_NAME "Termux:Boot">
-    <!ENTITY TERMUX_FLOAT_APP_NAME "Termux:Float">
-    <!ENTITY TERMUX_STYLING_APP_NAME "Termux:Styling">
-    <!ENTITY TERMUX_TASKER_APP_NAME "Termux:Tasker">
-    <!ENTITY TERMUX_WIDGET_APP_NAME "Termux:Widget">
+    <!ENTITY TERMUX_PACKAGE_NAME "com.xport.terminal">
+    <!ENTITY TERMUX_APP_NAME "XPort">
+    <!ENTITY TERMUX_API_APP_NAME "XPort:API">
+    <!ENTITY TERMUX_FLOAT_APP_NAME "XPort:Float">
+    <!ENTITY TERMUX_TASKER_APP_NAME "XPort:Tasker">
+    <!ENTITY TERMUX_WIDGET_APP_NAME "XPort:Widget">
     ]>
 
 <resources>
@@ -78,20 +76,20 @@
 
     <string name="action_reset_terminal">Reset</string>
     <string name="msg_terminal_reset">Terminal reset</string>
+    
+    <string name="action_open_settings">Settings</string>
 
     <string name="action_kill_process">Kill process (%d)</string>
     <string name="title_confirm_kill_process">Really kill this session?</string>
 
     <string name="action_style_terminal">Style</string>
     <string name="action_toggle_keep_screen_on">Keep screen on</string>
-    <string name="action_open_help">Help</string>
-    <string name="action_open_settings">Settings</string>
 
     <string name="action_report_issue">Report Issue</string>
     <string name="msg_generating_report">Generating Report</string>
     <string name="msg_add_termux_debug_info">Add termux debug info to report?</string>
 
-    <string name="error_styling_not_installed">The &TERMUX_STYLING_APP_NAME; Plugin App is not installed.</string>
+    <string name="error_styling_not_installed">The XPort Styling Plugin App is not installed.</string>
     <string name="action_styling_install">Install</string>
 
 
@@ -136,7 +134,6 @@
 
 
     <!-- Termux Settings -->
-    <string name="title_activity_termux_settings">&TERMUX_APP_NAME; Settings</string>
 
     <!-- Termux App Preferences -->
     <string name="termux_preferences_title">&TERMUX_APP_NAME;</string>
@@ -234,5 +231,9 @@
 
     <!-- Donate Preference -->
     <string name="donate_preference_title">Donate</string>
+
+    <!-- Missing action strings -->
+    <string name="action_yes">Yes</string>
+    <string name="action_no">No</string>
 
 </resources>

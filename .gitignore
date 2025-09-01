@@ -37,3 +37,15 @@ local.properties
 .swp
 ehthumbs.db
 Thumbs.db
+
+# Bootstrap build artifacts (not for git)
+bootstrap/
+logs/
+
+# Documentation (except README.md)
+docs/
+*.md
+!README.md
+
+# Build logs
+*.log

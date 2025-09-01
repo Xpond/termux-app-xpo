@@ -1,0 +1,6 @@
+#!/data/data/com.xport.terminal/files/usr/bin/bash
+# XPort APT Info Script
+# This is a placeholder script for XPort
+echo "XPort Terminal - Minimal Bootstrap"
+echo "Package manager: Not available in minimal build"
+echo "Use SSH to access full package management"
