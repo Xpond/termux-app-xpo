@@ -52,10 +52,12 @@ public class XPortBootstrap {
             }
             
             // Check if already installed
-            if (isBootstrapInstalled()) {
-                Log.i(TAG, "Bootstrap already installed");
-                return true;
-            }
+            // TEMP: Force reinstall to debug bootstrap extraction issue
+            // if (isBootstrapInstalled()) {
+            //     Log.i(TAG, "Bootstrap already installed");
+            //     return true;
+            // }
+            Log.i(TAG, "Forcing bootstrap installation for debugging");
             
             Log.i(TAG, "Installing XPort minimal bootstrap...");
             

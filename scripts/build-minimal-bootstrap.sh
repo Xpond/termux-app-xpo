@@ -618,6 +618,18 @@ EOF
     sed -i 's/CONFIG_FSCK_MINIX=y/CONFIG_FSCK_MINIX=n/' .config 2>/dev/null || true  # setbit/clrbit undefined
     sed -i 's/CONFIG_MKFS_MINIX=y/CONFIG_MKFS_MINIX=n/' .config 2>/dev/null || true  # setbit/clrbit undefined
     
+    # Disable utilities that use setgid/setuid syscalls (blocked by Android seccomp)
+    sed -i 's/CONFIG_LOGIN=y/CONFIG_LOGIN=n/' .config 2>/dev/null || true            # setgid/setuid syscalls
+    sed -i 's/CONFIG_PASSWD=y/CONFIG_PASSWD=n/' .config 2>/dev/null || true          # setgid/setuid syscalls
+    sed -i 's/CONFIG_ADDUSER=y/CONFIG_ADDUSER=n/' .config 2>/dev/null || true        # setgid/setuid syscalls
+    sed -i 's/CONFIG_DELUSER=y/CONFIG_DELUSER=n/' .config 2>/dev/null || true        # setgid/setuid syscalls
+    sed -i 's/CONFIG_ADDGROUP=y/CONFIG_ADDGROUP=n/' .config 2>/dev/null || true      # setgid syscalls
+    sed -i 's/CONFIG_DELGROUP=y/CONFIG_DELGROUP=n/' .config 2>/dev/null || true      # setgid syscalls
+    sed -i 's/CONFIG_CHPASSWD=y/CONFIG_CHPASSWD=n/' .config 2>/dev/null || true      # setgid/setuid syscalls
+    sed -i 's/CONFIG_SULOGIN=y/CONFIG_SULOGIN=n/' .config 2>/dev/null || true        # setgid/setuid syscalls
+    sed -i 's/CONFIG_VLOCK=y/CONFIG_VLOCK=n/' .config 2>/dev/null || true            # setgid/setuid syscalls
+    sed -i 's/CONFIG_FEATURE_SHADOWPASSWDS=y/CONFIG_FEATURE_SHADOWPASSWDS=n/' .config 2>/dev/null || true
+    
     # Disable shell glob features that need glob/globfree (not available in Android NDK)
     sed -i 's/CONFIG_HUSH_GLOB=y/CONFIG_HUSH_GLOB=n/' .config 2>/dev/null || true
     sed -i 's/CONFIG_FEATURE_SH_GLOB=y/CONFIG_FEATURE_SH_GLOB=n/' .config 2>/dev/null || true
@@ -648,6 +660,18 @@ EOF
     
     # Disable all shell advanced features that might cause issues
     sed -i 's/CONFIG_FEATURE_SH_STANDALONE=y/CONFIG_FEATURE_SH_STANDALONE=n/' .config 2>/dev/null || true
+    
+    # Disable ash shell features that might call setgid/setuid
+    sed -i 's/CONFIG_ASH_JOB_CONTROL=y/CONFIG_ASH_JOB_CONTROL=n/' .config 2>/dev/null || true
+    sed -i 's/CONFIG_ASH_ALIAS=y/CONFIG_ASH_ALIAS=n/' .config 2>/dev/null || true
+    sed -i 's/CONFIG_ASH_GETOPTS=y/CONFIG_ASH_GETOPTS=n/' .config 2>/dev/null || true
+    sed -i 's/CONFIG_ASH_BUILTIN_ECHO=y/CONFIG_ASH_BUILTIN_ECHO=n/' .config 2>/dev/null || true
+    sed -i 's/CONFIG_ASH_BUILTIN_PRINTF=y/CONFIG_ASH_BUILTIN_PRINTF=n/' .config 2>/dev/null || true
+    sed -i 's/CONFIG_ASH_BUILTIN_TEST=y/CONFIG_ASH_BUILTIN_TEST=n/' .config 2>/dev/null || true
+    sed -i 's/CONFIG_ASH_HELP=y/CONFIG_ASH_HELP=n/' .config 2>/dev/null || true
+    sed -i 's/CONFIG_ASH_CMDCMD=y/CONFIG_ASH_CMDCMD=n/' .config 2>/dev/null || true
+    sed -i 's/CONFIG_ASH_MAIL=y/CONFIG_ASH_MAIL=n/' .config 2>/dev/null || true
+    sed -i 's/CONFIG_ASH_OPTIMIZE_FOR_SIZE=y/CONFIG_ASH_OPTIMIZE_FOR_SIZE=n/' .config 2>/dev/null || true
     
     # Disable BusyBox platform compatibility functions that conflict with Android NDK r22
     sed -i 's/CONFIG_PLATFORM_LINUX=y/CONFIG_PLATFORM_LINUX=n/' .config 2>/dev/null || true
