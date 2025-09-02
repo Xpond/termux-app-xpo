@@ -10,7 +10,7 @@ task buildMinimalBootstrap(type: Exec) {
     group 'XPort'
     description 'Build minimal bootstrap components for XPort terminal'
     
-    workingDir rootProject.projectDir.parentFile
+    workingDir rootProject.projectDir
     commandLine './scripts/build-minimal-bootstrap.sh', 'build'
     
     doFirst {
@@ -18,7 +18,7 @@ task buildMinimalBootstrap(type: Exec) {
     }
     
     doLast {
-        println "Bootstrap build completed. Packages available in bootstrap/output/"
+        println "Bootstrap build completed. Packages available in bootstrap/"
     }
 }
 
@@ -27,7 +27,7 @@ task checkBootstrapRequirements(type: Exec) {
     group 'XPort'
     description 'Check if Android NDK and other requirements are available for bootstrap build'
     
-    workingDir rootProject.projectDir.parentFile
+    workingDir rootProject.projectDir
     commandLine './scripts/build-minimal-bootstrap.sh', 'check'
 }
 
@@ -37,7 +37,7 @@ task copyBootstrapToAssets {
     description 'Copy ARM64 bootstrap package to app assets for immediate testing'
     
     doLast {
-        def bootstrapFile = file("${rootProject.projectDir.parentFile}/bootstrap/output/xport-bootstrap-arm64-v8a.zip")
+        def bootstrapFile = file("${rootProject.projectDir}/bootstrap/xport-bootstrap-arm64-v8a.zip")
         def assetsDir = file("${project.projectDir}/src/main/assets")
         
         if (!assetsDir.exists()) {
