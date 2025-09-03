@@ -156,6 +156,9 @@ static int setup_binary_permissions() {
     const char* binaries[] = {
         BOOTSTRAP_PREFIX_DIR "/bin/toybox",
         BOOTSTRAP_PREFIX_DIR "/bin/ssh",
+        BOOTSTRAP_PREFIX_DIR "/bin/dbclient",
+        BOOTSTRAP_PREFIX_DIR "/bin/dropbearkey",
+        BOOTSTRAP_PREFIX_DIR "/bin/scp",
         BOOTSTRAP_PREFIX_DIR "/bin/ssh-keygen",
         BOOTSTRAP_PREFIX_DIR "/bin/sh",
         NULL

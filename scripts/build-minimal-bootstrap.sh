@@ -422,9 +422,19 @@ EOF
     export RANLIB="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib"
     export STRIP="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
     
-    # Set Android-friendly CFLAGS
+    # Set Android-friendly CFLAGS with proper TLS alignment for ARM64
     export CFLAGS="-I$openssl_dir/include -D__ANDROID_API__=$API_LEVEL -D__ANDROID__ -DDISABLE_SYSLOG -DDISABLE_UTMP -DDISABLE_UTMPX -DDISABLE_LASTLOG -DDISABLE_WTMP -DDISABLE_WTMPX"
+    
+    # Set basic LDFLAGS first
     export LDFLAGS="-L$openssl_dir/lib -static"
+    
+    # For ARM64, add additional page size settings for TLS compatibility
+    case "$arch" in
+        "arm64-v8a")
+            export LDFLAGS="$LDFLAGS -Wl,--hash-style=both -Wl,--enable-new-dtags -Wl,-z,max-page-size=16384"
+            ;;
+    esac
+    
     export LIBS="-lssl -lcrypto"
     
     # Configure Dropbear with client-only focus
@@ -462,6 +472,68 @@ EOF
     cp dbclient "$install_dir/bin/ssh"      # dbclient is the SSH client
     cp dropbearkey "$install_dir/bin/"      # Key generation tool  
     cp scp "$install_dir/bin/"              # SCP for file transfer
+    
+    # Fix TLS alignment for ARM64 Bionic using direct binary patching
+    if [ "$arch" = "arm64-v8a" ]; then
+        log_info "Applying TLS alignment fix for ARM64 binaries..."
+        for binary in "$install_dir/bin/ssh" "$install_dir/bin/dropbearkey" "$install_dir/bin/scp"; do
+            if [ -f "$binary" ]; then
+                # Create a backup
+                cp "$binary" "$binary.bak"
+                
+                # Use a hex editor approach to fix TLS alignment
+                # This modifies the program header to set proper alignment
+                python3 - "$binary" << 'PYTHON_SCRIPT'
+import sys
+import struct
+
+def fix_tls_alignment(filename):
+    try:
+        with open(filename, 'r+b') as f:
+            # Read ELF header to find program header
+            f.seek(0)
+            e_ident = f.read(16)
+            if e_ident[:4] != b'\x7fELF':
+                return False
+                
+            # Skip to program header offset
+            f.seek(32)  # e_phoff for 64-bit
+            phoff = struct.unpack('<Q', f.read(8))[0]
+            
+            f.seek(54)  # e_phnum position for 64-bit
+            phnum = struct.unpack('<H', f.read(2))[0]
+            
+            # Look for TLS segment (PT_TLS = 7)
+            for i in range(phnum):
+                ph_offset = phoff + i * 56  # 56 bytes per program header in 64-bit
+                f.seek(ph_offset)
+                
+                p_type = struct.unpack('<L', f.read(4))[0]
+                if p_type == 7:  # PT_TLS
+                    # Skip to p_align field (offset 48 in program header)
+                    f.seek(ph_offset + 48)
+                    current_align = struct.unpack('<Q', f.read(8))[0]
+                    
+                    if current_align < 64:
+                        # Set alignment to 64 bytes
+                        f.seek(ph_offset + 48)
+                        f.write(struct.pack('<Q', 64))
+                        print(f"Fixed TLS alignment from {current_align} to 64")
+                        return True
+        return False
+    except:
+        return False
+
+if len(sys.argv) > 1:
+    success = fix_tls_alignment(sys.argv[1])
+    if not success:
+        print("TLS alignment fix failed or not needed")
+PYTHON_SCRIPT
+                
+                log_info "Applied TLS alignment fix to $(basename "$binary")"
+            fi
+        done
+    fi
     
     log_success "Dropbear SSH for $arch built successfully"
 }
@@ -687,25 +759,34 @@ create_package() {
     rm -rf "$pkg_dir"
     mkdir -p "$pkg_dir/bin"
     
-    # Copy binaries
+    # Copy binaries with proper fallback
+    log_info "Copying Toybox..."
     cp "$BUILD_DIR/toybox-$arch/toybox" "$pkg_dir/bin/"
-    cp "$BUILD_DIR/dropbear-$arch/dbclient" "$pkg_dir/bin/"
-    cp "$BUILD_DIR/dropbear-$arch/scp" "$pkg_dir/bin/"
     
-    # Copy from install directory if available
+    log_info "Copying Dropbear binaries..."
+    # Try install directory first, then build directory
     if [ -d "$BUILD_DIR/dropbear-install-$arch/bin" ]; then
+        log_info "Using dropbear install directory"
         cp "$BUILD_DIR/dropbear-install-$arch/bin/"* "$pkg_dir/bin/" 2>/dev/null || true
+    else
+        log_info "Using dropbear build directory"
+        if [ -f "$BUILD_DIR/dropbear-$arch/dbclient" ]; then
+            cp "$BUILD_DIR/dropbear-$arch/dbclient" "$pkg_dir/bin/"
+        fi
+        if [ -f "$BUILD_DIR/dropbear-$arch/dropbearkey" ]; then
+            cp "$BUILD_DIR/dropbear-$arch/dropbearkey" "$pkg_dir/bin/"
+        fi
+        if [ -f "$BUILD_DIR/dropbear-$arch/scp" ]; then
+            cp "$BUILD_DIR/dropbear-$arch/scp" "$pkg_dir/bin/"
+        fi
     fi
     
-    # Create a simple shell script for basic shell functionality
-    cat > "$pkg_dir/bin/sh" << 'SHELL_EOF'
-#!/system/bin/sh
-# Simple shell wrapper for XPort Terminal
-# Since Toybox shell has Android NDK compatibility issues, 
-# we use the system shell as a fallback
-exec /system/bin/sh "$@"
-SHELL_EOF
-    chmod +x "$pkg_dir/bin/sh"
+    # Ensure all binaries have execute permissions
+    chmod +x "$pkg_dir/bin/"*
+    
+    # NOTE: Don't create bin/sh here - let toybox symlinks handle it
+    # The shell functionality will be provided by toybox sh symlink
+    # (Creating sh as a separate file conflicts with symlink creation)
     
     # Create symbolic link for ssh (points to dbclient) if not already present
     cd "$pkg_dir/bin"

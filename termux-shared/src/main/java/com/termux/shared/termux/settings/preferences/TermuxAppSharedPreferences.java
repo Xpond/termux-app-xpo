@@ -85,7 +85,7 @@ public class TermuxAppSharedPreferences {
     }
     
     public int getFontSize() {
-        return 14; // Default font size
+        return 22; // Further increased default font size for better readability
     }
     
     public boolean isTerminalViewKeyLoggingEnabled() {
