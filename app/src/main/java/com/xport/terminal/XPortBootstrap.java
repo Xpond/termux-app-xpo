@@ -4,6 +4,13 @@ import android.content.Context;
 import android.content.res.AssetManager;
 import android.util.Log;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+
 /**
  * XPort Minimal Bootstrap Manager
  * 
@@ -35,6 +42,71 @@ public class XPortBootstrap {
     private static native boolean isBootstrapInstalled();
     
     /**
+     * Extract ZIP asset to destination directory using Java
+     */
+    private static boolean extractZipAsset(AssetManager assetManager, String assetName, String destDir) {
+        Log.i(TAG, "Extracting ZIP asset: " + assetName + " to " + destDir);
+        
+        try {
+            // Create destination directory
+            File destDirFile = new File(destDir);
+            if (!destDirFile.exists() && !destDirFile.mkdirs()) {
+                Log.e(TAG, "Failed to create destination directory: " + destDir);
+                return false;
+            }
+            
+            // Open ZIP asset
+            InputStream assetStream = assetManager.open(assetName);
+            ZipInputStream zipStream = new ZipInputStream(assetStream);
+            
+            byte[] buffer = new byte[8192];
+            ZipEntry entry;
+            int extractedFiles = 0;
+            
+            while ((entry = zipStream.getNextEntry()) != null) {
+                String fileName = entry.getName();
+                File outputFile = new File(destDir, fileName);
+                
+                if (entry.isDirectory()) {
+                    // Create directory
+                    if (!outputFile.exists() && !outputFile.mkdirs()) {
+                        Log.w(TAG, "Failed to create directory: " + outputFile.getPath());
+                    }
+                } else {
+                    // Create parent directories if needed
+                    File parentDir = outputFile.getParentFile();
+                    if (parentDir != null && !parentDir.exists() && !parentDir.mkdirs()) {
+                        Log.w(TAG, "Failed to create parent directory: " + parentDir.getPath());
+                    }
+                    
+                    // Extract file
+                    try (FileOutputStream outputStream = new FileOutputStream(outputFile)) {
+                        int bytesRead;
+                        while ((bytesRead = zipStream.read(buffer)) != -1) {
+                            outputStream.write(buffer, 0, bytesRead);
+                        }
+                    }
+                    
+                    extractedFiles++;
+                    Log.d(TAG, "Extracted: " + fileName);
+                }
+                
+                zipStream.closeEntry();
+            }
+            
+            zipStream.close();
+            assetStream.close();
+            
+            Log.i(TAG, "Successfully extracted " + extractedFiles + " files from " + assetName);
+            return true;
+            
+        } catch (IOException e) {
+            Log.e(TAG, "Failed to extract ZIP asset: " + assetName, e);
+            return false;
+        }
+    }
+
+    /**
      * Install the minimal bootstrap if not already installed
      * 
      * @param context Application context
@@ -64,7 +136,18 @@ public class XPortBootstrap {
             // Get asset manager
             AssetManager assetManager = context.getAssets();
             
-            // Install bootstrap
+            // Get architecture
+            String arch = getArchitecture();
+            String bootstrapZip = "xport-bootstrap-" + arch + ".zip";
+            
+            // Extract bootstrap ZIP using Java instead of native unzip
+            String bootstrapPrefix = getBootstrapPrefix();
+            if (!extractZipAsset(assetManager, bootstrapZip, bootstrapPrefix)) {
+                Log.e(TAG, "Failed to extract bootstrap ZIP");
+                return false;
+            }
+            
+            // Install bootstrap (setup permissions and config)
             boolean success = installBootstrap(assetManager);
             
             if (success) {
@@ -82,6 +165,26 @@ public class XPortBootstrap {
         } catch (Exception e) {
             Log.e(TAG, "Exception during bootstrap installation", e);
             return false;
+        }
+    }
+    
+    /**
+     * Get current Android architecture
+     */
+    private static String getArchitecture() {
+        String abi = android.os.Build.SUPPORTED_ABIS[0];
+        switch (abi) {
+            case "arm64-v8a":
+                return "arm64-v8a";
+            case "armeabi-v7a":
+                return "armeabi-v7a";
+            case "x86_64":
+                return "x86_64";
+            case "x86":
+                return "x86";
+            default:
+                Log.w(TAG, "Unknown ABI: " + abi + ", defaulting to arm64-v8a");
+                return "arm64-v8a";
         }
     }
     

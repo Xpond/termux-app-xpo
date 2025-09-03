@@ -190,9 +190,9 @@ public class RunCommandService extends Service {
             }
         }
 
-        // If the executable passed as the extra was an applet for coreutils/busybox, then we must
+        // If the executable passed as the extra was an applet for coreutils/toybox, then we must
         // use it instead of the canonical path above since otherwise arguments would be passed to
-        // coreutils/busybox instead and command would fail. Broken symlinks would already have been
+        // coreutils/toybox instead and command would fail. Broken symlinks would already have been
         // validated so it should be fine to use it.
         executableExtra = TermuxFileUtils.getExpandedTermuxPath(executableExtra);
         if (FileUtils.getFileType(executableExtra, false) == FileType.SYMLINK) {

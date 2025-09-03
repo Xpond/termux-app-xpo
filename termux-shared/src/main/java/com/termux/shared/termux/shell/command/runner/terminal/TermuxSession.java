@@ -20,6 +20,8 @@ import com.termux.terminal.TerminalSession;
 import com.termux.terminal.TerminalSessionClient;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -122,11 +124,30 @@ public class TermuxSession {
         String[] commandArgs = shellEnvironmentClient.setupShellCommandArguments(executionCommand.executable, executionCommand.arguments);
 
         executionCommand.executable = commandArgs[0];
-        String processName = (isLoginShell ? "-" : "") + ShellUtils.getExecutableBasename(executionCommand.executable);
-
-        String[] arguments = new String[commandArgs.length];
-        arguments[0] = processName;
-        if (commandArgs.length > 1) System.arraycopy(commandArgs, 1, arguments, 1, commandArgs.length - 1);
+        String executableBasename = ShellUtils.getExecutableBasename(executionCommand.executable);
+        
+        // For toybox compatibility: use the actual command name instead of prefixing with "-"
+        // Toybox expects "sh" as argv[0], not "-sh" 
+        String processName;
+        String[] arguments;
+        if (isLoginShell && "toybox".equals(executableBasename)) {
+            // For toybox, we need to pass the actual shell command name
+            processName = "sh";
+            // Add login shell flag as an argument instead
+            List<String> argsList = new ArrayList<>();
+            argsList.add(processName);
+            argsList.add("-l"); // login shell flag for toybox sh
+            if (commandArgs.length > 1) {
+                argsList.addAll(Arrays.asList(Arrays.copyOfRange(commandArgs, 1, commandArgs.length)));
+            }
+            arguments = argsList.toArray(new String[0]);
+        } else {
+            // Traditional shell behavior: prefix with "-" for login shell
+            processName = (isLoginShell ? "-" : "") + executableBasename;
+            arguments = new String[commandArgs.length];
+            arguments[0] = processName;
+            if (commandArgs.length > 1) System.arraycopy(commandArgs, 1, arguments, 1, commandArgs.length - 1);
+        }
 
         executionCommand.arguments = arguments;
 
