@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Build minimal bootstrap for Android terminals
-# Creates a minimal BusyBox with essential tools for SSH functionality
+# Creates a minimal toybox with essential tools for SSH functionality
 
 set -e
 
@@ -13,13 +13,16 @@ BUILD_DIR="$BOOTSTRAP_DIR/build"
 DOWNLOADS_DIR="$BOOTSTRAP_DIR/downloads"
 
 # Package versions
-BUSYBOX_VERSION="1.36.1"
+TOYBOX_VERSION="0.8.10"
 OPENSSL_VERSION="3.1.1"
 DROPBEAR_VERSION="2024.85"
 
-# Android NDK configuration
-ANDROID_NDK_ROOT="${ANDROID_NDK_ROOT:-/opt/android-sdk/ndk/22.1.7171670}"
+# Android NDK configuration - hardcoded since it never changes
+ANDROID_NDK_ROOT="/opt/android-sdk/ndk/22.1.7171670"
 API_LEVEL=21
+
+# Debug: Print NDK root path  
+echo "DEBUG: ANDROID_NDK_ROOT is set to: $ANDROID_NDK_ROOT"
 
 # Architecture targets
 ARCHITECTURES=("arm64-v8a")
@@ -151,9 +154,9 @@ download_sources() {
     
     cd "$DOWNLOADS_DIR"
     
-    # Download BusyBox
-    if [ ! -f "busybox-${BUSYBOX_VERSION}.tar.bz2" ]; then
-        wget "https://busybox.net/downloads/busybox-${BUSYBOX_VERSION}.tar.bz2"
+    # Download Toybox
+    if [ ! -f "toybox-${TOYBOX_VERSION}.tar.gz" ]; then
+        wget "https://github.com/landley/toybox/archive/refs/tags/${TOYBOX_VERSION}.tar.gz" -O "toybox-${TOYBOX_VERSION}.tar.gz"
     fi
     
     # Download OpenSSL
@@ -175,10 +178,21 @@ extract_sources() {
     
     cd "$BUILD_DIR"
     
-    # Extract BusyBox if not already extracted
-    if [ ! -d "busybox-${BUSYBOX_VERSION}" ]; then
-        tar -xjf "$DOWNLOADS_DIR/busybox-${BUSYBOX_VERSION}.tar.bz2"
+    # Extract Toybox if not already extracted
+    if [ ! -d "toybox-${TOYBOX_VERSION}" ]; then
+        tar -xzf "$DOWNLOADS_DIR/toybox-${TOYBOX_VERSION}.tar.gz"
+        
+        # Note: Toybox doesn't need Android seccomp patches like BusyBox did
+        echo "[INFO] Toybox extracted - no compatibility patches needed"
+        cd "toybox-${TOYBOX_VERSION}"
+        
+        # Toybox is designed to be more portable and doesn't need these patches
+        echo "[SUCCESS] Toybox extracted and ready to build"
+        cd ..
     fi
+    
+    # Toybox doesn't require complex patching like BusyBox
+    echo "[INFO] Toybox source extraction complete - no patching required"
     
     # Extract OpenSSL if not already extracted
     if [ ! -d "openssl-${OPENSSL_VERSION}" ]; then
@@ -452,15 +466,15 @@ EOF
     log_success "Dropbear SSH for $arch built successfully"
 }
 
-# Build BusyBox for architecture
-build_busybox() {
+# Build Toybox for architecture
+build_toybox() {
     local arch="$1"
-    local build_dir="$BUILD_DIR/busybox-$arch"
+    local build_dir="$BUILD_DIR/toybox-$arch"
     
-    log_info "Building BusyBox for $arch..."
+    log_info "Building Toybox for $arch..."
     
-    if [ -f "$build_dir/busybox" ]; then
-        log_info "BusyBox for $arch already built, skipping..."
+    if [ -f "$build_dir/toybox" ]; then
+        log_info "Toybox for $arch already built, skipping..."
         return 0
     fi
     
@@ -468,244 +482,180 @@ build_busybox() {
     source "$BUILD_DIR/toolchain-$arch/env.sh"
     
     # Copy source
-    cp -r "$BUILD_DIR/busybox-${BUSYBOX_VERSION}" "$build_dir"
+    cp -r "$BUILD_DIR/toybox-${TOYBOX_VERSION}" "$build_dir"
     cd "$build_dir"
     
-    # Create Android-compatible stub headers
-    mkdir -p include/sys
-    
-    # Create utmpx.h stub
-    cat > include/utmpx.h << 'EOF'
-/* Stub utmpx.h for Android NDK compatibility */
-#ifndef _UTMPX_H
-#define _UTMPX_H
-#include <sys/time.h>
-struct utmpx { 
-    char ut_user[32]; 
-    char ut_id[4]; 
-    char ut_line[32]; 
-    char ut_host[256];
-    short ut_type; 
-    pid_t ut_pid; 
-    struct timeval ut_tv; 
-};
-#define EMPTY 0
-#define USER_PROCESS 7
-#define RUN_LVL 1
-#define LOGIN_PROCESS 6
-#define INIT_PROCESS 5
-#define DEAD_PROCESS 8
-static inline struct utmpx *getutxent(void) { return NULL; }
-static inline struct utmpx *pututxline(const struct utmpx *ut) { (void)ut; return NULL; }
-static inline void setutxent(void) {}
-static inline void endutxent(void) {}
-static inline void updwtmpx(const char *wtmpx_file, const struct utmpx *utx) { (void)wtmpx_file; (void)utx; }
-static inline int utmpxname(const char *file) { (void)file; return 0; }
-#define _PATH_UTMPX "/data/data/com.xport.terminal/files/var/log/utmpx"
-#endif
-EOF
-    
-    # Create utmp.h stub
-    cat > include/utmp.h << 'EOF'
-/* Stub utmp.h for Android NDK compatibility */
-#ifndef _UTMP_H
-#define _UTMP_H
-struct utmp { char ut_user[32]; char ut_id[4]; char ut_line[32]; short ut_type; pid_t ut_pid; long ut_time; };
-static inline struct utmp *getutent(void) { return NULL; }
-static inline void setutent(void) {}
-static inline void endutent(void) {}
-#define _PATH_WTMP "/data/data/com.xport.terminal/files/var/log/wtmp"
-#endif
-EOF
-    
-    # Create sys/kd.h stub
-    cat > include/sys/kd.h << 'EOF'
-/* Stub sys/kd.h for Android NDK compatibility */
-#ifndef _SYS_KD_H
-#define _SYS_KD_H
-
-/* Linux keyboard/console constants - minimal stubs for Android */
-#define KDGETMODE    0x4B3B
-#define KDSETMODE    0x4B3A
-#define KD_TEXT      0x00
-#define KD_GRAPHICS  0x01
-#define VT_ACTIVATE  0x5606
-#define VT_WAITACTIVE 0x5607
-
-#endif /* _SYS_KD_H */
-EOF
-    
-    # Use default config and customize
-    make defconfig >/dev/null 2>&1
-    
-    # Configure environment for cross-compilation
+    # Configure Toybox build for Android
     export CROSS_COMPILE=""
-    export CFLAGS="${CFLAGS:-} -I$(pwd)/include"
-    export LDFLAGS="${LDFLAGS:-}"
+    export CFLAGS="${CFLAGS:-} -D__ANDROID__ -DANDROID -Os"
+    export LDFLAGS="${LDFLAGS:-} -static"
     
-# Already made defconfig above
+    # Create stub header for missing SELinux functionality
+    mkdir -p selinux
+    cat > selinux/selinux.h << 'EOF'
+/* Stub selinux.h for Android NDK compatibility */
+#ifndef _SELINUX_SELINUX_H_
+#define _SELINUX_SELINUX_H_
+
+/* Stub functions - SELinux not available in Android NDK */
+static inline int is_selinux_enabled(void) { return 0; }
+static inline char *selinux_context_path(void) { return NULL; }
+static inline int getcon(char **context) { *context = NULL; return -1; }
+static inline int setcon(const char *context) { return -1; }
+static inline void freecon(char *context) { }
+
+#endif
+EOF
     
-    # Disable problematic tools for Android build
-    sed -i 's/CONFIG_LOADFONT=y/CONFIG_LOADFONT=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_SETFONT=y/CONFIG_SETFONT=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_DUMPKMAP=y/CONFIG_DUMPKMAP=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_LOADKMAP=y/CONFIG_LOADKMAP=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_RUNLEVEL=y/CONFIG_RUNLEVEL=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_WHO=y/CONFIG_WHO=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_GETTY=y/CONFIG_GETTY=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_TC=y/CONFIG_TC=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_FEATURE_TC_INGRESS=y/CONFIG_FEATURE_TC_INGRESS=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_LAST=y/CONFIG_LAST=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_CONSPY=y/CONFIG_CONSPY=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_IFCONFIG=y/CONFIG_IFCONFIG=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_ROUTE=y/CONFIG_ROUTE=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_ARP=y/CONFIG_ARP=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_FEATURE_IFUPDOWN_IPV6=y/CONFIG_FEATURE_IFUPDOWN_IPV6=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_IFUPDOWN=y/CONFIG_IFUPDOWN=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_FEATURE_IFCONFIG_STATUS=y/CONFIG_FEATURE_IFCONFIG_STATUS=n/' .config 2>/dev/null || true
+    # Create Android NDK compatibility stubs
+    cat > android_compat.h << 'EOF'
+/* Android NDK compatibility stubs */
+#ifndef _ANDROID_COMPAT_H_
+#define _ANDROID_COMPAT_H_
+
+#include <grp.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <langinfo.h>
+#include <ifaddrs.h>
+#include <iconv.h>
+#include <stdio.h>
+
+/* Android API level constants */
+#ifndef __ANDROID_API_U__
+#define __ANDROID_API_U__ 34
+#endif
+
+/* Thread-safe group functions not available in Android NDK */
+static inline int getgrnam_r(const char *name, struct group *grp, 
+                           char *buffer, size_t bufsize, struct group **result) {
+    struct group *g = getgrnam(name);
+    if (!g) {
+        *result = NULL;
+        return errno ? errno : ENOENT;
+    }
+    *grp = *g;
+    *result = grp;
+    return 0;
+}
+
+static inline int getgrgid_r(gid_t gid, struct group *grp,
+                           char *buffer, size_t bufsize, struct group **result) {
+    struct group *g = getgrgid(gid);
+    if (!g) {
+        *result = NULL;
+        return errno ? errno : ENOENT;
+    }
+    *grp = *g;
+    *result = grp;
+    return 0;
+}
+
+/* getentropy function not available in older Android NDK */
+static inline int getentropy(void *buffer, size_t length) {
+    /* Simple fallback using /dev/urandom */
+    static int fd = -1;
+    if (fd < 0) {
+        fd = open("/dev/urandom", O_RDONLY);
+        if (fd < 0) return -1;
+    }
+    return read(fd, buffer, length) == length ? 0 : -1;
+}
+
+/* nl_langinfo function not available in Android NDK */
+#ifndef CODESET
+#define CODESET 14
+#endif
+
+static inline char *nl_langinfo(int item) {
+    /* Android always uses UTF-8 for apps */
+    if (item == CODESET) return "UTF-8";
+    return "";
+}
+
+/* sethostname function not available in Android NDK */
+static inline int sethostname(const char *name, size_t len) {
+    /* Android doesn't allow changing hostname from apps */
+    errno = EPERM;
+    return -1;
+}
+
+/* getifaddrs/freeifaddrs functions not available in Android NDK */
+static inline int getifaddrs(struct ifaddrs **ifap) {
+    /* Network interface enumeration not available */
+    *ifap = NULL;
+    errno = ENOSYS;
+    return -1;
+}
+
+static inline void freeifaddrs(struct ifaddrs *ifa) {
+    /* Nothing to free since getifaddrs always fails */
+    (void)ifa;
+}
+
+/* iconv functions not available in Android NDK */
+static inline iconv_t iconv_open(const char *tocode, const char *fromcode) {
+    /* Character encoding conversion not available */
+    errno = ENOSYS;
+    return (iconv_t)-1;
+}
+
+static inline size_t iconv(iconv_t cd, char **inbuf, size_t *inbytesleft,
+                          char **outbuf, size_t *outbytesleft) {
+    /* Character encoding conversion not available */
+    errno = ENOSYS;
+    return (size_t)-1;
+}
+
+static inline int iconv_close(iconv_t cd) {
+    /* Nothing to close since iconv_open always fails */
+    (void)cd;
+    return 0;
+}
+
+/* fmemopen function not available in Android NDK */
+static inline FILE *fmemopen(void *buffer, size_t size, const char *mode) {
+    /* Create temporary file as fallback */
+    FILE *fp = tmpfile();
+    if (fp && buffer && size > 0 && (mode[0] == 'r' || mode[0] == 'w')) {
+        if (mode[0] == 'r') {
+            fwrite(buffer, 1, size, fp);
+            rewind(fp);
+        }
+    }
+    return fp;
+}
+
+#endif
+EOF
     
-    # Disable all networking utilities that depend on interface.c to avoid in6_ifreq conflicts
-    sed -i 's/CONFIG_FEATURE_IPV6=y/CONFIG_FEATURE_IPV6=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_PING=y/CONFIG_PING=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_PING6=y/CONFIG_PING6=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_NETSTAT=y/CONFIG_NETSTAT=n/' .config 2>/dev/null || true
+    # Add include path for our stub headers and include the compatibility header
+    # Also add OpenSSL include path
+    export CFLAGS="$CFLAGS -I. -include android_compat.h -I../openssl-$ARCH/include"
     
-    # Disable syslog utilities - Android uses different logging system
-    sed -i 's/CONFIG_SYSLOGD=y/CONFIG_SYSLOGD=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_LOGGER=y/CONFIG_LOGGER=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_LOGREAD=y/CONFIG_LOGREAD=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_KLOGD=y/CONFIG_KLOGD=n/' .config 2>/dev/null || true
+    # Add OpenSSL library path
+    export LDFLAGS="$LDFLAGS -L../openssl-$ARCH -lcrypto"
     
-    # Disable IPC utilities - they have semun union conflicts with Android NDK
-    sed -i 's/CONFIG_IPCRM=y/CONFIG_IPCRM=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_IPCS=y/CONFIG_IPCS=n/' .config 2>/dev/null || true
+    # Build Toybox with Android defaults
+    make android_defconfig >/dev/null 2>&1 || make defconfig >/dev/null 2>&1
     
-    # Disable swap utilities - Android doesn't use traditional swap
-    sed -i 's/CONFIG_SWAPON=y/CONFIG_SWAPON=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_SWAPOFF=y/CONFIG_SWAPOFF=n/' .config 2>/dev/null || true
+    # Disable SELinux support to avoid Android NDK compatibility issues
+    sed -i 's/CONFIG_TOYBOX_SELINUX=y/# CONFIG_TOYBOX_SELINUX is not set/' .config
+    sed -i 's/CONFIG_CHCON=y/# CONFIG_CHCON is not set/' .config
+    sed -i 's/CONFIG_GETENFORCE=y/# CONFIG_GETENFORCE is not set/' .config
+    sed -i 's/CONFIG_LOAD_POLICY=y/# CONFIG_LOAD_POLICY is not set/' .config
+    sed -i 's/CONFIG_RESTORECON=y/# CONFIG_RESTORECON is not set/' .config
+    sed -i 's/CONFIG_RUNCON=y/# CONFIG_RUNCON is not set/' .config
+    sed -i 's/CONFIG_SETENFORCE=y/# CONFIG_SETENFORCE is not set/' .config
     
-    # Disable DNS resolution features that require libresolv (not available on Android NDK)
-    sed -i 's/CONFIG_NSLOOKUP=y/CONFIG_NSLOOKUP=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_FEATURE_NSLOOKUP_BIG=y/CONFIG_FEATURE_NSLOOKUP_BIG=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_FEATURE_NSSWITCH=y/CONFIG_FEATURE_NSSWITCH=n/' .config 2>/dev/null || true
+    # For now, keep shell disabled due to Android NDK compatibility issues
+    # The app will need to be configured to use a different shell approach
+    # sed -i 's/# CONFIG_SH is not set/CONFIG_SH=y/' .config
     
-    # Disable all hostname/DNS related features that might require libresolv
-    sed -i 's/CONFIG_HOSTNAME=y/CONFIG_HOSTNAME=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_DNSDOMAINNAME=y/CONFIG_DNSDOMAINNAME=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_FEATURE_ETC_NETWORKS=y/CONFIG_FEATURE_ETC_NETWORKS=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_FEATURE_PREFER_IPV4_ADDRESS=y/CONFIG_FEATURE_PREFER_IPV4_ADDRESS=n/' .config 2>/dev/null || true
-    
-    # Disable additional problematic networking components from Issue #2 solution
-    sed -i 's/CONFIG_BRCTL=y/CONFIG_BRCTL=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_FEATURE_BRCTL_FANCY=y/CONFIG_FEATURE_BRCTL_FANCY=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_FEATURE_BRCTL_SHOW=y/CONFIG_FEATURE_BRCTL_SHOW=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_IFPLUGD=y/CONFIG_IFPLUGD=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_INETD=y/CONFIG_INETD=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_FEATURE_INETD_SUPPORT_BUILTIN_ECHO=y/CONFIG_FEATURE_INETD_SUPPORT_BUILTIN_ECHO=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_FEATURE_INETD_SUPPORT_BUILTIN_DISCARD=y/CONFIG_FEATURE_INETD_SUPPORT_BUILTIN_DISCARD=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_FEATURE_INETD_SUPPORT_BUILTIN_TIME=y/CONFIG_FEATURE_INETD_SUPPORT_BUILTIN_TIME=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_FEATURE_INETD_SUPPORT_BUILTIN_DAYTIME=y/CONFIG_FEATURE_INETD_SUPPORT_BUILTIN_DAYTIME=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_FEATURE_INETD_SUPPORT_BUILTIN_CHARGEN=y/CONFIG_FEATURE_INETD_SUPPORT_BUILTIN_CHARGEN=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_FEATURE_INETD_RPC=y/CONFIG_FEATURE_INETD_RPC=n/' .config 2>/dev/null || true
-    
-    # Disable utilities with Android NDK undefined symbols
-    sed -i 's/CONFIG_SYNC=y/CONFIG_SYNC=n/' .config 2>/dev/null || true              # syncfs undefined
-    sed -i 's/CONFIG_HOSTID=y/CONFIG_HOSTID=n/' .config 2>/dev/null || true          # gethostid undefined  
-    sed -i 's/CONFIG_LOGNAME=y/CONFIG_LOGNAME=n/' .config 2>/dev/null || true        # getlogin_r undefined
-    sed -i 's/CONFIG_SU=y/CONFIG_SU=n/' .config 2>/dev/null || true                  # getusershell undefined
-    sed -i 's/CONFIG_SEEDRNG=y/CONFIG_SEEDRNG=n/' .config 2>/dev/null || true        # getrandom undefined
-    sed -i 's/CONFIG_ETHER_WAKE=y/CONFIG_ETHER_WAKE=n/' .config 2>/dev/null || true  # ether_hostton undefined
-    sed -i 's/CONFIG_FSCK_MINIX=y/CONFIG_FSCK_MINIX=n/' .config 2>/dev/null || true  # setbit/clrbit undefined
-    sed -i 's/CONFIG_MKFS_MINIX=y/CONFIG_MKFS_MINIX=n/' .config 2>/dev/null || true  # setbit/clrbit undefined
-    
-    # Disable utilities that use setgid/setuid syscalls (blocked by Android seccomp)
-    sed -i 's/CONFIG_LOGIN=y/CONFIG_LOGIN=n/' .config 2>/dev/null || true            # setgid/setuid syscalls
-    sed -i 's/CONFIG_PASSWD=y/CONFIG_PASSWD=n/' .config 2>/dev/null || true          # setgid/setuid syscalls
-    sed -i 's/CONFIG_ADDUSER=y/CONFIG_ADDUSER=n/' .config 2>/dev/null || true        # setgid/setuid syscalls
-    sed -i 's/CONFIG_DELUSER=y/CONFIG_DELUSER=n/' .config 2>/dev/null || true        # setgid/setuid syscalls
-    sed -i 's/CONFIG_ADDGROUP=y/CONFIG_ADDGROUP=n/' .config 2>/dev/null || true      # setgid syscalls
-    sed -i 's/CONFIG_DELGROUP=y/CONFIG_DELGROUP=n/' .config 2>/dev/null || true      # setgid syscalls
-    sed -i 's/CONFIG_CHPASSWD=y/CONFIG_CHPASSWD=n/' .config 2>/dev/null || true      # setgid/setuid syscalls
-    sed -i 's/CONFIG_SULOGIN=y/CONFIG_SULOGIN=n/' .config 2>/dev/null || true        # setgid/setuid syscalls
-    sed -i 's/CONFIG_VLOCK=y/CONFIG_VLOCK=n/' .config 2>/dev/null || true            # setgid/setuid syscalls
-    sed -i 's/CONFIG_FEATURE_SHADOWPASSWDS=y/CONFIG_FEATURE_SHADOWPASSWDS=n/' .config 2>/dev/null || true
-    
-    # Disable shell glob features that need glob/globfree (not available in Android NDK)
-    sed -i 's/CONFIG_HUSH_GLOB=y/CONFIG_HUSH_GLOB=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_FEATURE_SH_GLOB=y/CONFIG_FEATURE_SH_GLOB=n/' .config 2>/dev/null || true
-    
-    # Disable features that use unavailable signal functions (sigtimedwait, sigisemptyset)
-    sed -i 's/CONFIG_INIT=y/CONFIG_INIT=n/' .config 2>/dev/null || true               # sigtimedwait undefined
-    sed -i 's/CONFIG_MDEV=y/CONFIG_MDEV=n/' .config 2>/dev/null || true              # sigtimedwait undefined
-    sed -i 's/CONFIG_RUN_INIT=y/CONFIG_RUN_INIT=n/' .config 2>/dev/null || true      # sigtimedwait undefined
-    sed -i 's/CONFIG_FEATURE_WAIT_FOR_INIT=y/CONFIG_FEATURE_WAIT_FOR_INIT=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_FEATURE_USE_INITTAB=y/CONFIG_FEATURE_USE_INITTAB=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_FEATURE_INIT_SCTTY=y/CONFIG_FEATURE_INIT_SCTTY=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_FEATURE_INIT_SYSLOG=y/CONFIG_FEATURE_INIT_SYSLOG=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_FEATURE_INIT_QUIET=y/CONFIG_FEATURE_INIT_QUIET=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_FEATURE_INIT_MODIFY_CMDLINE=y/CONFIG_FEATURE_INIT_MODIFY_CMDLINE=n/' .config 2>/dev/null || true
-    
-    # Disable all utilities in init/ directory that might pull in init.c code
-    sed -i 's/CONFIG_BOOTCHARTD=y/CONFIG_BOOTCHARTD=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_FEATURE_BOOTCHARTD_BLOATED_HEADER=y/CONFIG_FEATURE_BOOTCHARTD_BLOATED_HEADER=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_FEATURE_BOOTCHARTD_CONFIG_FILE=y/CONFIG_FEATURE_BOOTCHARTD_CONFIG_FILE=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_HALT=y/CONFIG_HALT=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_POWEROFF=y/CONFIG_POWEROFF=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_REBOOT=y/CONFIG_REBOOT=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_LINUXRC=y/CONFIG_LINUXRC=n/' .config 2>/dev/null || true
-    
-    # Disable hush shell completely - use ash instead (has fewer Android NDK conflicts)
-    sed -i 's/CONFIG_HUSH=y/CONFIG_HUSH=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_ASH=n/CONFIG_ASH=y/' .config 2>/dev/null || true
-    
-    # Disable all shell advanced features that might cause issues
-    sed -i 's/CONFIG_FEATURE_SH_STANDALONE=y/CONFIG_FEATURE_SH_STANDALONE=n/' .config 2>/dev/null || true
-    
-    # Disable ash shell features that might call setgid/setuid
-    sed -i 's/CONFIG_ASH_JOB_CONTROL=y/CONFIG_ASH_JOB_CONTROL=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_ASH_ALIAS=y/CONFIG_ASH_ALIAS=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_ASH_GETOPTS=y/CONFIG_ASH_GETOPTS=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_ASH_BUILTIN_ECHO=y/CONFIG_ASH_BUILTIN_ECHO=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_ASH_BUILTIN_PRINTF=y/CONFIG_ASH_BUILTIN_PRINTF=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_ASH_BUILTIN_TEST=y/CONFIG_ASH_BUILTIN_TEST=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_ASH_HELP=y/CONFIG_ASH_HELP=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_ASH_CMDCMD=y/CONFIG_ASH_CMDCMD=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_ASH_MAIL=y/CONFIG_ASH_MAIL=n/' .config 2>/dev/null || true
-    sed -i 's/CONFIG_ASH_OPTIMIZE_FOR_SIZE=y/CONFIG_ASH_OPTIMIZE_FOR_SIZE=n/' .config 2>/dev/null || true
-    
-    # Disable BusyBox platform compatibility functions that conflict with Android NDK r22
-    sed -i 's/CONFIG_PLATFORM_LINUX=y/CONFIG_PLATFORM_LINUX=n/' .config 2>/dev/null || true
-    
-    # Add defines to prevent duplicate symbols with Android NDK r22
-    export CFLAGS="$CFLAGS -DHAVE_STRCHRNUL"
-    
-    # Remove libresolv dependency by overriding EXTRA_LDLIBS  
-    echo 'CONFIG_EXTRA_LDLIBS=""' >> .config
-    
-    # Manually patch libbb to avoid duplicate symbols with Android libc
-    if [ -f libbb/missing_syscalls.c ]; then
-        # Comment out functions that now exist in Android NDK r22 (getsid, sethostname, adjtimex)
-        if ! grep -q "^/\*$" libbb/missing_syscalls.c; then
-            sed -i '/^pid_t getsid/,/^}$/c\
-/*\
-pid_t getsid(pid_t pid)\
-{\
-	return syscall(__NR_getsid, pid);\
-}\
-\
-int sethostname(const char *name, size_t len)\
-{\
-	return syscall(__NR_sethostname, name, len);\
-}\
-\
-struct timex;\
-int adjtimex(struct timex *buf)\
-{\
-	return syscall(__NR_adjtimex, buf);\
-}\
-*/' libbb/missing_syscalls.c
-        fi
-    fi
+    # Disable programs that use xfork() which isn't available in Android NDK
+    sed -i 's/CONFIG_NETCAT=y/# CONFIG_NETCAT is not set/' .config
+    sed -i 's/CONFIG_NBD_CLIENT=y/# CONFIG_NBD_CLIENT is not set/' .config
     
     # Build with explicit cross-compilation variables
     make -j$(nproc) \
@@ -717,12 +667,62 @@ int adjtimex(struct timex *buf)\
         CROSS_COMPILE="$CROSS_COMPILE" \
         CFLAGS="$CFLAGS" \
         LDFLAGS="$LDFLAGS" \
-        busybox
+        toybox
     
     # Strip the binary
-    $STRIP busybox
+    $STRIP toybox
     
-    log_success "BusyBox for $arch built successfully"
+    log_success "Toybox for $arch built successfully"
+}
+
+# Create bootstrap package for an architecture
+create_package() {
+    local arch=$1
+    log_info "Creating bootstrap package for $arch..."
+    
+    local pkg_dir="$BUILD_DIR/package-$arch"
+    local pkg_name="$BOOTSTRAP_DIR/xport-bootstrap-$arch.zip"
+    
+    # Create temporary package directory
+    rm -rf "$pkg_dir"
+    mkdir -p "$pkg_dir/bin"
+    
+    # Copy binaries
+    cp "$BUILD_DIR/toybox-$arch/toybox" "$pkg_dir/bin/"
+    cp "$BUILD_DIR/dropbear-$arch/dbclient" "$pkg_dir/bin/"
+    cp "$BUILD_DIR/dropbear-$arch/scp" "$pkg_dir/bin/"
+    
+    # Copy from install directory if available
+    if [ -d "$BUILD_DIR/dropbear-install-$arch/bin" ]; then
+        cp "$BUILD_DIR/dropbear-install-$arch/bin/"* "$pkg_dir/bin/" 2>/dev/null || true
+    fi
+    
+    # Create a simple shell script for basic shell functionality
+    cat > "$pkg_dir/bin/sh" << 'SHELL_EOF'
+#!/system/bin/sh
+# Simple shell wrapper for XPort Terminal
+# Since Toybox shell has Android NDK compatibility issues, 
+# we use the system shell as a fallback
+exec /system/bin/sh "$@"
+SHELL_EOF
+    chmod +x "$pkg_dir/bin/sh"
+    
+    # Create symbolic link for ssh (points to dbclient) if not already present
+    cd "$pkg_dir/bin"
+    if [ ! -e "ssh" ]; then
+        ln -s dbclient ssh
+    fi
+    cd - >/dev/null
+    
+    # Create ZIP package
+    cd "$pkg_dir"
+    zip -r "$pkg_name" . >/dev/null
+    cd - >/dev/null
+    
+    # Cleanup temporary directory
+    rm -rf "$pkg_dir"
+    
+    log_success "Package created: $(basename "$pkg_name") ($(stat -c%s "$pkg_name") bytes)"
 }
 
 # Build all packages
@@ -732,10 +732,13 @@ build_all() {
     for arch in "${ARCHITECTURES[@]}"; do
         log_info "Building for $arch..."
         
-        # Build OpenSSL, Dropbear, and BusyBox
+        # Build OpenSSL, Dropbear, and Toybox
         build_openssl "$arch"
         build_dropbear "$arch"
-        build_busybox "$arch"
+        build_toybox "$arch"
+        
+        # Create bootstrap package
+        create_package "$arch"
         
         log_success "Build for $arch completed"
     done

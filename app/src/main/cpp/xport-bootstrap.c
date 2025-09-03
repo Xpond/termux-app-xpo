@@ -6,7 +6,7 @@
  * 
  * Key differences from Termux bootstrap:
  * - Much smaller bootstrap (~5-10MB vs 180MB+)
- * - Only essential components (BusyBox, OpenSSH, minimal libs)
+ * - Only essential components (Toybox, Dropbear SSH, minimal libs)
  * - Simplified extraction and setup
  * - SSH-focused environment configuration
  */
@@ -107,90 +107,7 @@ static int set_file_permissions(const char* path, mode_t mode) {
     return 0;
 }
 
-/**
- * Extract a single file from Android assets to filesystem
- */
-static int extract_asset_file(AAssetManager* asset_manager, const char* asset_path, const char* dest_path) {
-    LOGD("Extracting %s to %s", asset_path, dest_path);
-    
-    // Open asset
-    AAsset* asset = AAssetManager_open(asset_manager, asset_path, AASSET_MODE_STREAMING);
-    if (!asset) {
-        LOGE("Failed to open asset: %s", asset_path);
-        return -1;
-    }
-    
-    // Create destination directory
-    char* dest_dir = strdup(dest_path);
-    if (!dest_dir) {
-        AAsset_close(asset);
-        return -1;
-    }
-    
-    char* dir_path = dirname(dest_dir);
-    if (create_directory_recursive(dir_path, 0755) != 0) {
-        LOGE("Failed to create destination directory: %s", dir_path);
-        free(dest_dir);
-        AAsset_close(asset);
-        return -1;
-    }
-    free(dest_dir);
-    
-    // Open destination file
-    int dest_fd = open(dest_path, O_CREAT | O_WRONLY | O_TRUNC, 0644);
-    if (dest_fd < 0) {
-        LOGE("Failed to create destination file %s: %s", dest_path, strerror(errno));
-        AAsset_close(asset);
-        return -1;
-    }
-    
-    // Copy data
-    char buffer[BUFFER_SIZE];
-    int bytes_read;
-    int total_bytes = 0;
-    
-    while ((bytes_read = AAsset_read(asset, buffer, sizeof(buffer))) > 0) {
-        if (write(dest_fd, buffer, bytes_read) != bytes_read) {
-            LOGE("Failed to write to destination file %s: %s", dest_path, strerror(errno));
-            close(dest_fd);
-            AAsset_close(asset);
-            unlink(dest_path);
-            return -1;
-        }
-        total_bytes += bytes_read;
-    }
-    
-    close(dest_fd);
-    AAsset_close(asset);
-    
-    LOGD("Extracted %d bytes from %s to %s", total_bytes, asset_path, dest_path);
-    return 0;
-}
 
-/**
- * Extract bootstrap ZIP file using minimal unzip
- */
-static int extract_bootstrap_zip(const char* zip_path, const char* dest_dir) {
-    LOGI("Extracting bootstrap ZIP: %s to %s", zip_path, dest_dir);
-    
-    // Create destination directory
-    if (create_directory_recursive(dest_dir, 0755) != 0) {
-        return -1;
-    }
-    
-    // Use busybox unzip if available, or implement simple ZIP extraction
-    char unzip_cmd[PATH_MAX_LEN * 2];
-    snprintf(unzip_cmd, sizeof(unzip_cmd), "cd \"%s\" && unzip -qq \"%s\" 2>/dev/null", dest_dir, zip_path);
-    
-    int result = system(unzip_cmd);
-    if (result != 0) {
-        LOGE("Failed to extract ZIP file: %s (exit code: %d)", zip_path, result);
-        return -1;
-    }
-    
-    LOGI("Bootstrap ZIP extracted successfully");
-    return 0;
-}
 
 /**
  * Setup essential environment directories
@@ -237,11 +154,10 @@ static int setup_binary_permissions() {
     LOGI("Setting up binary permissions");
     
     const char* binaries[] = {
-        BOOTSTRAP_PREFIX_DIR "/bin/busybox",
+        BOOTSTRAP_PREFIX_DIR "/bin/toybox",
         BOOTSTRAP_PREFIX_DIR "/bin/ssh",
         BOOTSTRAP_PREFIX_DIR "/bin/ssh-keygen",
         BOOTSTRAP_PREFIX_DIR "/bin/sh",
-        BOOTSTRAP_PREFIX_DIR "/bin/ash",
         NULL
     };
     
@@ -261,18 +177,18 @@ static int setup_binary_permissions() {
 }
 
 /**
- * Create essential symlinks for BusyBox applets
+ * Create essential symlinks for Toybox applets
  */
-static int setup_busybox_symlinks() {
-    LOGI("Setting up BusyBox symlinks");
+static int setup_toybox_symlinks() {
+    LOGI("Setting up Toybox symlinks");
     
-    const char* busybox_path = BOOTSTRAP_PREFIX_DIR "/bin/busybox";
-    if (access(busybox_path, F_OK) != 0) {
-        LOGE("BusyBox binary not found: %s", busybox_path);
+    const char* toybox_path = BOOTSTRAP_PREFIX_DIR "/bin/toybox";
+    if (access(toybox_path, F_OK) != 0) {
+        LOGE("Toybox binary not found: %s", toybox_path);
         return -1;
     }
     
-    // Essential commands that should be symlinked to busybox
+    // Essential commands that should be symlinked to toybox
     const char* commands[] = {
         "sh", "ash", "ls", "cat", "cp", "mv", "rm", "mkdir", "chmod", "chown",
         "touch", "echo", "pwd", "test", "[", "which", "whoami", "id", "groups",
@@ -293,15 +209,15 @@ static int setup_busybox_symlinks() {
         }
         
         // Create symlink
-        if (symlink("busybox", symlink_path) != 0) {
-            LOGE("Failed to create symlink %s -> busybox: %s", symlink_path, strerror(errno));
+        if (symlink("toybox", symlink_path) != 0) {
+            LOGE("Failed to create symlink %s -> toybox: %s", symlink_path, strerror(errno));
             // Don't fail completely, just log the error
         } else {
-            LOGD("Created symlink: %s -> busybox", commands[i]);
+            LOGD("Created symlink: %s -> toybox", commands[i]);
         }
     }
     
-    LOGI("BusyBox symlinks setup complete");
+    LOGI("Toybox symlinks setup complete");
     return 0;
 }
 
@@ -373,7 +289,7 @@ static int setup_configuration_files() {
 static int is_bootstrap_installed() {
     // Check for key files
     const char* key_files[] = {
-        BOOTSTRAP_PREFIX_DIR "/bin/busybox",
+        BOOTSTRAP_PREFIX_DIR "/bin/toybox",
         BOOTSTRAP_PREFIX_DIR "/bin/ssh",
         BOOTSTRAP_PREFIX_DIR "/bin/ssh-keygen",
         BOOTSTRAP_PREFIX_DIR "/etc/profile",
@@ -426,28 +342,8 @@ Java_com_xport_terminal_XPortBootstrap_installBootstrap(JNIEnv *env, jclass claz
         return JNI_FALSE;
     }
     
-    // Extract bootstrap ZIP for current architecture
-    char bootstrap_zip[256];
-    snprintf(bootstrap_zip, sizeof(bootstrap_zip), "xport-bootstrap-%s.zip", arch);
-    
-    char temp_zip_path[PATH_MAX_LEN];
-    snprintf(temp_zip_path, sizeof(temp_zip_path), "%s/bootstrap.zip", BOOTSTRAP_TMP_DIR);
-    
-    // Extract ZIP from assets to temp location
-    if (extract_asset_file(mgr, bootstrap_zip, temp_zip_path) != 0) {
-        LOGE("Failed to extract bootstrap ZIP from assets");
-        return JNI_FALSE;
-    }
-    
-    // Extract bootstrap files from ZIP
-    if (extract_bootstrap_zip(temp_zip_path, BOOTSTRAP_PREFIX_DIR) != 0) {
-        LOGE("Failed to extract bootstrap files");
-        unlink(temp_zip_path);
-        return JNI_FALSE;
-    }
-    
-    // Clean up temp ZIP
-    unlink(temp_zip_path);
+    // Note: ZIP extraction is now handled by Java code before calling this function
+    // This function just sets up permissions and configuration files
     
     // Setup permissions and symlinks
     if (setup_binary_permissions() != 0) {
@@ -455,8 +351,8 @@ Java_com_xport_terminal_XPortBootstrap_installBootstrap(JNIEnv *env, jclass claz
         return JNI_FALSE;
     }
     
-    if (setup_busybox_symlinks() != 0) {
-        LOGE("Failed to setup BusyBox symlinks");
+    if (setup_toybox_symlinks() != 0) {
+        LOGE("Failed to setup Toybox symlinks");
         return JNI_FALSE;
     }
     
