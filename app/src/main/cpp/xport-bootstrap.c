@@ -192,8 +192,9 @@ static int setup_toybox_symlinks() {
     }
     
     // Essential commands that should be symlinked to toybox
+    // NOTE: Excluding shell commands (sh, ash) due to Android compatibility issues
     const char* commands[] = {
-        "sh", "ash", "ls", "cat", "cp", "mv", "rm", "mkdir", "chmod", "chown",
+        "ls", "cat", "cp", "mv", "rm", "mkdir", "chmod", "chown",
         "touch", "echo", "pwd", "test", "[", "which", "whoami", "id", "groups",
         "tar", "gzip", "gunzip", "unzip", "wget", "grep", "find", "sort",
         "head", "tail", "cut", "sed", "awk", "wc", "uniq", "basename", "dirname",
