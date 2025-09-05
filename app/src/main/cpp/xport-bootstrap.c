@@ -245,6 +245,8 @@ static int setup_configuration_files() {
         fprintf(profile, "export PREFIX=\"%s\"\n", BOOTSTRAP_PREFIX_DIR);
         fprintf(profile, "export LANG=\"en_US.UTF-8\"\n");
         fprintf(profile, "export LC_ALL=\"en_US.UTF-8\"\n");
+        fprintf(profile, "\n# Set clean prompt\n");
+        fprintf(profile, "export PS1=\"$ \"\n");
         fprintf(profile, "\n# Change to home directory\n");
         fprintf(profile, "cd \"$HOME\"\n");
         fclose(profile);
@@ -252,6 +254,22 @@ static int setup_configuration_files() {
         LOGD("Created profile: %s", profile_path);
     } else {
         LOGE("Failed to create profile: %s", profile_path);
+    }
+    
+    // Create custom mksh configuration for clean prompt
+    char mkshrc_path[PATH_MAX_LEN];
+    snprintf(mkshrc_path, sizeof(mkshrc_path), BOOTSTRAP_PREFIX_DIR "/etc/mkshrc");
+    
+    FILE* mkshrc = fopen(mkshrc_path, "w");
+    if (mkshrc) {
+        fprintf(mkshrc, "# XPort custom mksh configuration\n");
+        fprintf(mkshrc, "# Show current directory name only, not full path\n");
+        fprintf(mkshrc, "PS1='${PWD##*/} $ '\n");
+        fclose(mkshrc);
+        
+        LOGD("Created custom mkshrc: %s", mkshrc_path);
+    } else {
+        LOGE("Failed to create custom mkshrc: %s", mkshrc_path);
     }
     
     // Create SSH client configuration

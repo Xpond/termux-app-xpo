@@ -69,7 +69,7 @@ public class TermuxAppSharedPreferences {
     }
     
     public boolean shouldShowTerminalToolbar() {
-        return false; // Default toolbar visibility
+        return true; // Default toolbar visibility - enabled for XPort
     }
     
     public boolean toogleShowTerminalToolbar() {

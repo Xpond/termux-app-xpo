@@ -76,6 +76,9 @@ public class TermuxShellEnvironment extends AndroidShellEnvironment {
 
         environment.put(ENV_HOME, TermuxConstants.TERMUX_HOME_DIR_PATH);
         environment.put(ENV_PREFIX, TermuxConstants.TERMUX_PREFIX_DIR_PATH);
+        
+        // Set ENV to point to custom mksh config for clean prompt
+        environment.put("ENV", TermuxConstants.TERMUX_PREFIX_DIR_PATH + "/etc/mkshrc");
 
         // If failsafe is not enabled, then we keep default PATH and TMPDIR so that system binaries can be used
         if (!isFailSafe) {
