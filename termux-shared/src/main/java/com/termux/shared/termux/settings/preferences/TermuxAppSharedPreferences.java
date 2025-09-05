@@ -85,7 +85,8 @@ public class TermuxAppSharedPreferences {
     }
     
     public int getFontSize() {
-        return 22; // Further increased default font size for better readability
+        // Use FontSizeManager for dynamic font sizing
+        return FontSizeManager.getCurrentPixelSize();
     }
     
     public boolean isTerminalViewKeyLoggingEnabled() {
@@ -93,7 +94,20 @@ public class TermuxAppSharedPreferences {
     }
     
     public void changeFontSize(boolean increase) {
-        // Stub implementation for font size change
+        int currentScale = FontSizeManager.getScale();
+        if (increase && currentScale < 10) {
+            FontSizeManager.setScale(currentScale + 1);
+        } else if (!increase && currentScale > 1) {
+            FontSizeManager.setScale(currentScale - 1);
+        }
+    }
+    
+    public int getFontSizeScale() {
+        return FontSizeManager.getScale();
+    }
+    
+    public void setFontSizeScale(int scale) {
+        FontSizeManager.setScale(scale);
     }
     
     public void setSoftKeyboardEnabled(boolean enabled) {

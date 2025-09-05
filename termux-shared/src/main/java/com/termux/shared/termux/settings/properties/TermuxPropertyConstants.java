@@ -25,7 +25,7 @@ public class TermuxPropertyConstants {
     // Default values
     public static final String DEFAULT_WORKING_DIRECTORY = "/data/data/com.xport.terminal/files/home";
     public static final String DEFAULT_NIGHT_MODE = "auto";
-    public static final String DEFAULT_IVALUE_EXTRA_KEYS = "[[['ESC','/','-','HOME','UP','END','PGUP'],['TAB','CTRL','ALT','LEFT','DOWN','RIGHT','PGDN']]]";
+    public static final String DEFAULT_IVALUE_EXTRA_KEYS = "[[['ESC','/','-','HOME','UP','END','PGUP'],['TAB','CTRL','ALT','LEFT','DOWN','RIGHT','PGDN'],['1','2','3','4','5','6','7','8','9','0']]]";
     public static final String DEFAULT_IVALUE_EXTRA_KEYS_STYLE = "default";
     
     // Session shortcuts map

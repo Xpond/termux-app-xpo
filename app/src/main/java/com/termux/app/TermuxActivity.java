@@ -213,6 +213,12 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         setActivityTheme();
 
         setContentView(R.layout.activity_termux);
+        
+        // Set up fullscreen mode to cover notch and system UI
+        setupFullscreenMode();
+        
+        // Set up proper edge-to-edge layout with padding
+        setupEdgeToEdgeLayout();
 
         // Load termux shared preferences
         // This will also fail if TermuxConstants.TERMUX_PACKAGE_NAME does not equal applicationId
@@ -318,6 +324,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         // Check if a crash happened on last run of the app or if a plugin crashed and show a
         // notification with the crash details if it did
         TermuxCrashUtils.notifyAppCrashFromCrashLogFile(this, LOG_TAG);
+        
+        // Check for font size changes
+        checkAndRefreshFontSize();
 
         mIsOnResumeAfterOnCreate = false;
     }
@@ -1091,5 +1100,117 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             zis.close();
         }
     }
+    
+    /**
+     * Check for font size changes and refresh terminal if needed
+     */
+    private void checkAndRefreshFontSize() {
+        try {
+            File triggerFile = new File("/data/data/com.xport.terminal/files/home/.fontsize_changed");
+            if (triggerFile.exists()) {
+                Logger.logDebug(LOG_TAG, "Font size change detected, refreshing terminal");
+                
+                // Refresh font size
+                if (mTerminalView != null) {
+                    int newFontSize = mPreferences.getFontSize();
+                    mTerminalView.setTextSize(newFontSize);
+                    Logger.logInfo(LOG_TAG, "Font size updated to: " + newFontSize + "px");
+                }
+                
+                // Remove trigger file
+                triggerFile.delete();
+            }
+        } catch (Exception e) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Error checking font size changes", e);
+        }
+    }
+    
+    /**
+     * Set up fullscreen mode to cover notch and system UI areas
+     */
+    private void setupFullscreenMode() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            // Android 11+ (API 30+)
+            getWindow().getInsetsController().hide(
+                android.view.WindowInsets.Type.statusBars() | 
+                android.view.WindowInsets.Type.navigationBars()
+            );
+            getWindow().getInsetsController().setSystemBarsBehavior(
+                android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            );
+        } else {
+            // Legacy fullscreen mode
+            View decorView = getWindow().getDecorView();
+            int uiOptions = View.SYSTEM_UI_FLAG_FULLSCREEN |
+                           View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
+                           View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY |
+                           View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
+                           View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
+                           View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN;
+            decorView.setSystemUiVisibility(uiOptions);
+        }
+    }
+    
+    /**
+     * Set up edge-to-edge layout with proper padding to avoid system UI areas
+     */
+    private void setupEdgeToEdgeLayout() {
+        View rootView = findViewById(R.id.activity_termux_root_relative_layout);
+        View terminalView = findViewById(R.id.terminal_view);
+        if (rootView == null || terminalView == null) return;
+        
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            // Android 11+ (API 30+) - Use WindowInsets API
+            rootView.setOnApplyWindowInsetsListener((v, insets) -> {
+                android.graphics.Insets systemBars = insets.getInsets(android.view.WindowInsets.Type.systemBars());
+                android.graphics.Insets displayCutout = insets.getInsets(android.view.WindowInsets.Type.displayCutout());
+                
+                // Calculate padding: system bars + cutout + base padding (3dp in pixels)
+                int basePadding = (int) (3 * getResources().getDisplayMetrics().density);
+                int paddingLeft = Math.max(systemBars.left, displayCutout.left) + basePadding;
+                int paddingTop = Math.max(systemBars.top, displayCutout.top) + basePadding;
+                int paddingRight = Math.max(systemBars.right, displayCutout.right) + basePadding;
+                int paddingBottom = 0; // No bottom padding - toolbar is positioned correctly
+                
+                // Apply padding to the RelativeLayout, not the root container
+                v.setPadding(paddingLeft, paddingTop, paddingRight, paddingBottom);
+                return insets;
+            });
+        } else {
+            // Legacy Android versions - Use static padding but check for notch
+            int basePadding = (int) (3 * getResources().getDisplayMetrics().density);
+            int statusBarHeight = getStatusBarHeight();
+            
+            rootView.setPadding(
+                basePadding,
+                statusBarHeight + basePadding,
+                basePadding,
+                0  // No bottom padding - toolbar positioning handled separately
+            );
+        }
+    }
+    
+    /**
+     * Get status bar height for legacy Android versions
+     */
+    private int getStatusBarHeight() {
+        int resourceId = getResources().getIdentifier("status_bar_height", "dimen", "android");
+        if (resourceId > 0) {
+            return getResources().getDimensionPixelSize(resourceId);
+        }
+        return (int) (24 * getResources().getDisplayMetrics().density); // Fallback: 24dp in pixels
+    }
+    
+    /**
+     * Get navigation bar height for legacy Android versions
+     */
+    private int getNavigationBarHeight() {
+        int resourceId = getResources().getIdentifier("navigation_bar_height", "dimen", "android");
+        if (resourceId > 0) {
+            return getResources().getDimensionPixelSize(resourceId);
+        }
+        return (int) (48 * getResources().getDisplayMetrics().density); // Fallback: 48dp in pixels
+    }
+    
 
 }

@@ -320,6 +320,83 @@ static int setup_configuration_files() {
         LOGE("Failed to create DNS resolver config: %s", resolv_conf_path);
     }
     
+    // Create fontsize command script
+    char fontsize_path[PATH_MAX_LEN];
+    snprintf(fontsize_path, sizeof(fontsize_path), BOOTSTRAP_PREFIX_DIR "/bin/fontsize");
+    
+    FILE* fontsize_script = fopen(fontsize_path, "w");
+    if (fontsize_script) {
+        fprintf(fontsize_script, "#!/system/bin/sh\n");
+        fprintf(fontsize_script, "# XPort Terminal Font Size Manager\n");
+        fprintf(fontsize_script, "\n");
+        fprintf(fontsize_script, "FONTSIZE_FILE=\"%s/.fontsize\"\n", BOOTSTRAP_HOME_DIR);
+        fprintf(fontsize_script, "TRIGGER_FILE=\"%s/.fontsize_changed\"\n", BOOTSTRAP_HOME_DIR);
+        fprintf(fontsize_script, "\n");
+        fprintf(fontsize_script, "show_usage() {\n");
+        fprintf(fontsize_script, "  echo \"XPort Terminal Font Size Manager\"\n");
+        fprintf(fontsize_script, "  echo \"\"\n");
+        fprintf(fontsize_script, "  echo \"Usage: $0 [SCALE]\"\n");
+        fprintf(fontsize_script, "  echo \"       $0 --help\"\n");
+        fprintf(fontsize_script, "  echo \"\"\n");
+        fprintf(fontsize_script, "  echo \"SCALE: Font size scale from 1 (smallest) to 10 (largest)\"\n");
+        fprintf(fontsize_script, "  echo \"       Default is 5 (medium)\"\n");
+        fprintf(fontsize_script, "  echo \"\"\n");
+        fprintf(fontsize_script, "  echo \"Without arguments, shows current font size scale.\"\n");
+        fprintf(fontsize_script, "  echo \"\"\n");
+        fprintf(fontsize_script, "  echo \"Examples:\"\n");
+        fprintf(fontsize_script, "  echo \"  $0          # Show current scale\"\n");
+        fprintf(fontsize_script, "  echo \"  $0 3        # Set to scale 3 (small)\"\n");
+        fprintf(fontsize_script, "  echo \"  $0 7        # Set to scale 7 (large)\"\n");
+        fprintf(fontsize_script, "}\n");
+        fprintf(fontsize_script, "\n");
+        fprintf(fontsize_script, "get_current_scale() {\n");
+        fprintf(fontsize_script, "  if [ -f \"$FONTSIZE_FILE\" ]; then\n");
+        fprintf(fontsize_script, "    cat \"$FONTSIZE_FILE\"\n");
+        fprintf(fontsize_script, "  else\n");
+        fprintf(fontsize_script, "    echo \"5\"\n");
+        fprintf(fontsize_script, "  fi\n");
+        fprintf(fontsize_script, "}\n");
+        fprintf(fontsize_script, "\n");
+        fprintf(fontsize_script, "set_scale() {\n");
+        fprintf(fontsize_script, "  SCALE=$1\n");
+        fprintf(fontsize_script, "  if [ \"$SCALE\" -lt 1 ] || [ \"$SCALE\" -gt 10 ]; then\n");
+        fprintf(fontsize_script, "    echo \"Error: Scale must be between 1 and 10\" >&2\n");
+        fprintf(fontsize_script, "    return 1\n");
+        fprintf(fontsize_script, "  fi\n");
+        fprintf(fontsize_script, "  \n");
+        fprintf(fontsize_script, "  mkdir -p \"$(dirname \"$FONTSIZE_FILE\")\"\n");
+        fprintf(fontsize_script, "  echo \"$SCALE\" > \"$FONTSIZE_FILE\"\n");
+        fprintf(fontsize_script, "  echo \"$SCALE\" > \"$TRIGGER_FILE\"\n");
+        fprintf(fontsize_script, "  \n");
+        fprintf(fontsize_script, "  PIXELS=$((8 + SCALE * 3))\n");
+        fprintf(fontsize_script, "  echo \"Font size set to scale $SCALE (${PIXELS}px)\"\n");
+        fprintf(fontsize_script, "  echo \"Changes will take effect on next terminal refresh.\"\n");
+        fprintf(fontsize_script, "}\n");
+        fprintf(fontsize_script, "\n");
+        fprintf(fontsize_script, "# Main script logic\n");
+        fprintf(fontsize_script, "if [ $# -eq 0 ]; then\n");
+        fprintf(fontsize_script, "  SCALE=$(get_current_scale)\n");
+        fprintf(fontsize_script, "  PIXELS=$((8 + SCALE * 3))\n");
+        fprintf(fontsize_script, "  echo \"Current font size: scale $SCALE (${PIXELS}px)\"\n");
+        fprintf(fontsize_script, "elif [ \"$1\" = \"--help\" ] || [ \"$1\" = \"-h\" ]; then\n");
+        fprintf(fontsize_script, "  show_usage\n");
+        fprintf(fontsize_script, "else\n");
+        fprintf(fontsize_script, "  # Validate that argument is a number\n");
+        fprintf(fontsize_script, "  case \"$1\" in\n");
+        fprintf(fontsize_script, "    ''|*[!0-9]*) echo \"Error: Invalid scale '$1'\" >&2; show_usage; exit 1 ;;\n");
+        fprintf(fontsize_script, "  esac\n");
+        fprintf(fontsize_script, "  set_scale \"$1\"\n");
+        fprintf(fontsize_script, "fi\n");
+        fclose(fontsize_script);
+        
+        // Set execute permissions
+        chmod(fontsize_path, 0755);
+        
+        LOGD("Created fontsize command script: %s", fontsize_path);
+    } else {
+        LOGE("Failed to create fontsize command script: %s", fontsize_path);
+    }
+    
     LOGI("Configuration files setup complete");
     return 0;
 }
@@ -332,6 +409,7 @@ static int is_bootstrap_installed() {
     const char* key_files[] = {
         BOOTSTRAP_PREFIX_DIR "/bin/toybox",
         BOOTSTRAP_PREFIX_DIR "/bin/ssh",
+        BOOTSTRAP_PREFIX_DIR "/bin/fontsize",
         BOOTSTRAP_PREFIX_DIR "/etc/profile",
         NULL
     };

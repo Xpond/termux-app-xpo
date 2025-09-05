@@ -46,7 +46,7 @@ public class XPortBootstrap {
      */
     private static void ensureBinaryPermissions() {
         String[] criticalBinaries = {
-            "toybox", "ssh", "dbclient", "dropbearkey", "scp", "sh"
+            "toybox", "ssh", "dbclient", "dropbearkey", "scp", "sh", "fontsize"
         };
         
         String binDir = getBootstrapPrefix() + "/bin";
