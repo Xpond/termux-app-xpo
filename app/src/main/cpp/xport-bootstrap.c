@@ -159,7 +159,6 @@ static int setup_binary_permissions() {
         BOOTSTRAP_PREFIX_DIR "/bin/dbclient",
         BOOTSTRAP_PREFIX_DIR "/bin/dropbearkey",
         BOOTSTRAP_PREFIX_DIR "/bin/scp",
-        BOOTSTRAP_PREFIX_DIR "/bin/ssh-keygen",
         BOOTSTRAP_PREFIX_DIR "/bin/sh",
         NULL
     };
@@ -283,6 +282,26 @@ static int setup_configuration_files() {
         LOGE("Failed to create SSH config: %s", ssh_config_path);
     }
     
+    // Create DNS resolver configuration for network connectivity
+    char resolv_conf_path[PATH_MAX_LEN];
+    snprintf(resolv_conf_path, sizeof(resolv_conf_path), BOOTSTRAP_PREFIX_DIR "/etc/resolv.conf");
+    
+    FILE* resolv_conf = fopen(resolv_conf_path, "w");
+    if (resolv_conf) {
+        fprintf(resolv_conf, "# XPort DNS resolver configuration\n");
+        fprintf(resolv_conf, "# Use Android system DNS servers\n");
+        fprintf(resolv_conf, "nameserver 8.8.8.8\n");
+        fprintf(resolv_conf, "nameserver 8.8.4.4\n");
+        fprintf(resolv_conf, "nameserver 1.1.1.1\n");
+        fprintf(resolv_conf, "# Add local DNS for better connectivity\n");
+        fprintf(resolv_conf, "nameserver 192.168.1.1\n");
+        fclose(resolv_conf);
+        
+        LOGD("Created DNS resolver config: %s", resolv_conf_path);
+    } else {
+        LOGE("Failed to create DNS resolver config: %s", resolv_conf_path);
+    }
+    
     LOGI("Configuration files setup complete");
     return 0;
 }
@@ -295,7 +314,6 @@ static int is_bootstrap_installed() {
     const char* key_files[] = {
         BOOTSTRAP_PREFIX_DIR "/bin/toybox",
         BOOTSTRAP_PREFIX_DIR "/bin/ssh",
-        BOOTSTRAP_PREFIX_DIR "/bin/ssh-keygen",
         BOOTSTRAP_PREFIX_DIR "/etc/profile",
         NULL
     };

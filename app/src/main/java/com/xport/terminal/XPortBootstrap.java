@@ -42,6 +42,25 @@ public class XPortBootstrap {
     private static native boolean isBootstrapInstalled();
     
     /**
+     * Ensure critical binaries have execute permissions
+     */
+    private static void ensureBinaryPermissions() {
+        String[] criticalBinaries = {
+            "toybox", "ssh", "dbclient", "dropbearkey", "scp", "sh"
+        };
+        
+        String binDir = getBootstrapPrefix() + "/bin";
+        
+        for (String binary : criticalBinaries) {
+            File binaryFile = new File(binDir, binary);
+            if (binaryFile.exists() && !binaryFile.canExecute()) {
+                boolean execSet = binaryFile.setExecutable(true, false);
+                Log.i(TAG, "Setting execute permission on " + binary + ": " + execSet);
+            }
+        }
+    }
+    
+    /**
      * Extract ZIP asset to destination directory using Java
      */
     private static boolean extractZipAsset(AssetManager assetManager, String assetName, String destDir) {
@@ -87,6 +106,12 @@ public class XPortBootstrap {
                         }
                     }
                     
+                    // Set execute permissions for binaries
+                    if (fileName.startsWith("bin/") && !fileName.endsWith("/")) {
+                        boolean execSet = outputFile.setExecutable(true, false);
+                        Log.d(TAG, "Set execute permission on " + fileName + ": " + execSet);
+                    }
+                    
                     extractedFiles++;
                     Log.d(TAG, "Extracted: " + fileName);
                 }
@@ -124,12 +149,10 @@ public class XPortBootstrap {
             }
             
             // Check if already installed
-            // TEMP: Force reinstall to debug extraction failure
-            // if (isBootstrapInstalled()) {
-            //     Log.i(TAG, "Bootstrap already installed");
-            //     return true;
-            // }
-            Log.i(TAG, "Forcing bootstrap installation for debugging");
+            if (isBootstrapInstalled()) {
+                Log.i(TAG, "Bootstrap already installed");
+                return true;
+            }
             
             Log.i(TAG, "Installing XPort minimal bootstrap...");
             
@@ -147,11 +170,17 @@ public class XPortBootstrap {
                 return false;
             }
             
+            // Ensure critical binaries have execute permissions (double-check)
+            ensureBinaryPermissions();
+            
             // Install bootstrap (setup permissions and config)
             boolean success = installBootstrap(assetManager);
             
             if (success) {
                 Log.i(TAG, "Bootstrap installation completed successfully");
+                
+                // Final permissions check
+                ensureBinaryPermissions();
                 
                 // Log bootstrap information
                 String info = getBootstrapInfo();
@@ -269,12 +298,4 @@ public class XPortBootstrap {
         return getBootstrapPrefix() + "/bin/ssh";
     }
     
-    /**
-     * Get the SSH keygen executable path
-     * 
-     * @return Path to the SSH keygen executable
-     */
-    public static String getSshKeygenPath() {
-        return getBootstrapPrefix() + "/bin/ssh-keygen";
-    }
 }

@@ -15,7 +15,7 @@ DOWNLOADS_DIR="$BOOTSTRAP_DIR/downloads"
 # Package versions
 TOYBOX_VERSION="0.8.10"
 OPENSSL_VERSION="3.1.1"
-DROPBEAR_VERSION="2024.85"
+DROPBEAR_VERSION="2025.88"
 
 # Android NDK configuration - hardcoded since it never changes
 ANDROID_NDK_ROOT="/opt/android-sdk/ndk/22.1.7171670"
@@ -302,8 +302,8 @@ build_dropbear() {
 /* Use simpler crypto - avoid libtommath/libtomcrypt issues */
 #define DROPBEAR_RSA 1
 #define DROPBEAR_DSS 0
-#define DROPBEAR_ECDSA 0
-#define DROPBEAR_ED25519 0
+#define DROPBEAR_ECDSA 1
+#define DROPBEAR_ED25519 1
 
 /* Simplify ciphers */
 #define DROPBEAR_AES128 1
@@ -393,11 +393,7 @@ EOF
 
 /* Force Android crypto configuration overrides */
 #ifdef __ANDROID__
-#undef DROPBEAR_ECDSA
-#define DROPBEAR_ECDSA 0
-
-#undef DROPBEAR_ED25519
-#define DROPBEAR_ED25519 0
+/* Keep ECDSA and Ed25519 enabled - remove forced disable */
 
 #undef DROPBEAR_DSS
 #define DROPBEAR_DSS 0
@@ -465,18 +461,19 @@ EOF
     
     # Build only client tools - avoid server completely
     log_info "Building Dropbear client tools..."
-    make -j$(nproc) dbclient dropbearkey scp
+    make -j$(nproc) LDFLAGS="$LDFLAGS" dbclient dropbearkey scp dropbearconvert
     
     # Install binaries
     mkdir -p "$install_dir/bin"
     cp dbclient "$install_dir/bin/ssh"      # dbclient is the SSH client
     cp dropbearkey "$install_dir/bin/"      # Key generation tool  
     cp scp "$install_dir/bin/"              # SCP for file transfer
+    cp dropbearconvert "$install_dir/bin/"  # Key format converter
     
     # Fix TLS alignment for ARM64 Bionic using direct binary patching
     if [ "$arch" = "arm64-v8a" ]; then
         log_info "Applying TLS alignment fix for ARM64 binaries..."
-        for binary in "$install_dir/bin/ssh" "$install_dir/bin/dropbearkey" "$install_dir/bin/scp"; do
+        for binary in "$install_dir/bin/ssh" "$install_dir/bin/dropbearkey" "$install_dir/bin/scp" "$install_dir/bin/dropbearconvert"; do
             if [ -f "$binary" ]; then
                 # Create a backup
                 cp "$binary" "$binary.bak"
@@ -747,6 +744,7 @@ EOF
     log_success "Toybox for $arch built successfully"
 }
 
+
 # Create bootstrap package for an architecture
 create_package() {
     local arch=$1
@@ -781,6 +779,7 @@ create_package() {
         fi
     fi
     
+    
     # Ensure all binaries have execute permissions
     chmod +x "$pkg_dir/bin/"*
     
@@ -788,10 +787,10 @@ create_package() {
     # The shell functionality will be provided by toybox sh symlink
     # (Creating sh as a separate file conflicts with symlink creation)
     
-    # Create symbolic link for ssh (points to dbclient) if not already present
+    # Create dbclient symlink pointing to ssh (the TLS-fixed binary)
     cd "$pkg_dir/bin"
-    if [ ! -e "ssh" ]; then
-        ln -s dbclient ssh
+    if [ -e "ssh" ] && [ ! -e "dbclient" ]; then
+        ln -s ssh dbclient
     fi
     cd - >/dev/null
     
