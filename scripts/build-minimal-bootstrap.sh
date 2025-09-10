@@ -24,7 +24,7 @@ API_LEVEL=21
 # Debug: Print NDK root path  
 echo "DEBUG: ANDROID_NDK_ROOT is set to: $ANDROID_NDK_ROOT"
 
-# Architecture targets
+# Architecture targets - XPort focuses only on ARM64
 ARCHITECTURES=("arm64-v8a")
 
 # Color output functions
@@ -237,6 +237,7 @@ build_openssl() {
     
     # Configure OpenSSL with explicit toolchain paths
     export PATH="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+    export ANDROID_NDK_ROOT="$ANDROID_NDK_ROOT"
     ./Configure "$openssl_arch" no-shared no-tests no-fuzz-libfuzzer no-fuzz-afl --prefix="$install_dir" --openssldir="$install_dir/ssl" \
         -D__ANDROID_API__=$API_LEVEL
     

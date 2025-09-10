@@ -89,10 +89,6 @@
 
 
 
-        <activity
-            android:name=".shared.activities.ReportActivity"
-            android:theme="@style/Theme.MarkdownViewActivity.DayNight"
-            android:documentLaunchMode="intoExisting" />
 
 
 
@@ -128,9 +124,6 @@
             </intent-filter>
         </receiver>
 
-        <receiver
-            android:name=".shared.activities.ReportActivity$ReportActivityBroadcastReceiver"
-            android:exported="false" />
 
 
         <service

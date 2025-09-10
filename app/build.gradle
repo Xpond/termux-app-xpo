@@ -62,6 +62,7 @@ android {
             minifyEnabled true
             shrinkResources false // Reproducible builds
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.debug
         }
 
         debug {
@@ -87,11 +88,7 @@ android {
         disable 'ProtectedPermissions'
     }
 
-    testOptions {
-        unitTests {
-            includeAndroidResources = true
-        }
-    }
+    // Test options removed for production build
 
     packagingOptions {
         jniLibs {
@@ -119,12 +116,12 @@ dependencies {
     implementation "androidx.appcompat:appcompat:1.4.2"
     implementation "androidx.drawerlayout:drawerlayout:1.1.1"
     implementation "androidx.viewpager:viewpager:1.0.0"
+    implementation "com.google.android.material:material:1.6.1"
     
     implementation project(":terminal-view")
     implementation project(":termux-shared")
     
-    testImplementation "junit:junit:4.13.2"
-    testImplementation "org.robolectric:robolectric:4.10"
+    // Test dependencies removed for production build
     coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:1.1.5"
     
     // Exclude conflicting ListenableFuture from all configurations

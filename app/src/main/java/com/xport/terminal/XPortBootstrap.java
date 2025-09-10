@@ -2,7 +2,7 @@ package com.xport.terminal;
 
 import android.content.Context;
 import android.content.res.AssetManager;
-import android.util.Log;
+// Removed Log import for production
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -18,7 +18,7 @@ import java.util.zip.ZipInputStream;
  * system that provides essential SSH functionality with minimal size footprint.
  */
 public class XPortBootstrap {
-    private static final String TAG = "XPortBootstrap";
+    // Removed TAG for production build
     
     // Native library loading state
     private static boolean sNativeLibraryLoaded = false;
@@ -29,9 +29,9 @@ public class XPortBootstrap {
             try {
                 System.loadLibrary("xport-bootstrap");
                 sNativeLibraryLoaded = true;
-                Log.i(TAG, "Native bootstrap library loaded successfully");
+                // Log removed for production
             } catch (UnsatisfiedLinkError e) {
-                Log.e(TAG, "Failed to load native bootstrap library", e);
+                // Log removed for production
             }
         }
     }
@@ -55,7 +55,7 @@ public class XPortBootstrap {
             File binaryFile = new File(binDir, binary);
             if (binaryFile.exists() && !binaryFile.canExecute()) {
                 boolean execSet = binaryFile.setExecutable(true, false);
-                Log.i(TAG, "Setting execute permission on " + binary + ": " + execSet);
+
             }
         }
     }
@@ -64,13 +64,13 @@ public class XPortBootstrap {
      * Extract ZIP asset to destination directory using Java
      */
     private static boolean extractZipAsset(AssetManager assetManager, String assetName, String destDir) {
-        Log.i(TAG, "Extracting ZIP asset: " + assetName + " to " + destDir);
+
         
         try {
             // Create destination directory
             File destDirFile = new File(destDir);
             if (!destDirFile.exists() && !destDirFile.mkdirs()) {
-                Log.e(TAG, "Failed to create destination directory: " + destDir);
+
                 return false;
             }
             
@@ -89,13 +89,13 @@ public class XPortBootstrap {
                 if (entry.isDirectory()) {
                     // Create directory
                     if (!outputFile.exists() && !outputFile.mkdirs()) {
-                        Log.w(TAG, "Failed to create directory: " + outputFile.getPath());
+                        // Log removed for production
                     }
                 } else {
                     // Create parent directories if needed
                     File parentDir = outputFile.getParentFile();
                     if (parentDir != null && !parentDir.exists() && !parentDir.mkdirs()) {
-                        Log.w(TAG, "Failed to create parent directory: " + parentDir.getPath());
+                        // Log removed for production
                     }
                     
                     // Extract file
@@ -109,11 +109,11 @@ public class XPortBootstrap {
                     // Set execute permissions for binaries
                     if (fileName.startsWith("bin/") && !fileName.endsWith("/")) {
                         boolean execSet = outputFile.setExecutable(true, false);
-                        Log.d(TAG, "Set execute permission on " + fileName + ": " + execSet);
+
                     }
                     
                     extractedFiles++;
-                    Log.d(TAG, "Extracted: " + fileName);
+
                 }
                 
                 zipStream.closeEntry();
@@ -122,11 +122,11 @@ public class XPortBootstrap {
             zipStream.close();
             assetStream.close();
             
-            Log.i(TAG, "Successfully extracted " + extractedFiles + " files from " + assetName);
+
             return true;
             
         } catch (IOException e) {
-            Log.e(TAG, "Failed to extract ZIP asset: " + assetName, e);
+
             return false;
         }
     }
@@ -139,22 +139,22 @@ public class XPortBootstrap {
      */
     public static boolean ensureBootstrapInstalled(Context context) {
         try {
-            Log.i(TAG, "Checking XPort bootstrap installation...");
+
             
             // Load native library first
             loadNativeLibrary();
             if (!sNativeLibraryLoaded) {
-                Log.e(TAG, "Cannot install bootstrap - native library failed to load");
+
                 return false;
             }
             
             // Check if already installed
             if (isBootstrapInstalled()) {
-                Log.i(TAG, "Bootstrap already installed");
+
                 return true;
             }
             
-            Log.i(TAG, "Installing XPort minimal bootstrap...");
+
             
             // Get asset manager
             AssetManager assetManager = context.getAssets();
@@ -166,7 +166,7 @@ public class XPortBootstrap {
             // Extract bootstrap ZIP using Java instead of native unzip
             String bootstrapPrefix = getBootstrapPrefix();
             if (!extractZipAsset(assetManager, bootstrapZip, bootstrapPrefix)) {
-                Log.e(TAG, "Failed to extract bootstrap ZIP");
+
                 return false;
             }
             
@@ -177,22 +177,22 @@ public class XPortBootstrap {
             boolean success = installBootstrap(assetManager);
             
             if (success) {
-                Log.i(TAG, "Bootstrap installation completed successfully");
+
                 
                 // Final permissions check
                 ensureBinaryPermissions();
                 
                 // Log bootstrap information
                 String info = getBootstrapInfo();
-                Log.i(TAG, "Bootstrap info: " + info);
+
             } else {
-                Log.e(TAG, "Bootstrap installation failed");
+
             }
             
             return success;
             
         } catch (Exception e) {
-            Log.e(TAG, "Exception during bootstrap installation", e);
+
             return false;
         }
     }
@@ -212,7 +212,7 @@ public class XPortBootstrap {
             case "x86":
                 return "x86";
             default:
-                Log.w(TAG, "Unknown ABI: " + abi + ", defaulting to arm64-v8a");
+                // Log removed for production
                 return "arm64-v8a";
         }
     }
@@ -230,7 +230,7 @@ public class XPortBootstrap {
             }
             return isBootstrapInstalled();
         } catch (Exception e) {
-            Log.e(TAG, "Error checking bootstrap installation status", e);
+
             return false;
         }
     }
@@ -248,7 +248,7 @@ public class XPortBootstrap {
             }
             return getBootstrapInfo();
         } catch (Exception e) {
-            Log.e(TAG, "Error getting bootstrap information", e);
+
             return "Bootstrap info unavailable";
         }
     }

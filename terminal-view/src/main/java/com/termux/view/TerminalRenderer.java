@@ -233,7 +233,11 @@ public final class TerminalRenderer {
             mTextPaint.setColor(foreColor);
 
             // The text alignment is the default Paint.Align.LEFT.
-            canvas.drawTextRun(text, startCharIndex, runWidthChars, startCharIndex, runWidthChars, left, y - mFontLineSpacingAndAscent, false, mTextPaint);
+            if (android.os.Build.VERSION.SDK_INT >= 23) {
+                canvas.drawTextRun(text, startCharIndex, runWidthChars, startCharIndex, runWidthChars, left, y - mFontLineSpacingAndAscent, false, mTextPaint);
+            } else {
+                canvas.drawText(text, startCharIndex, runWidthChars, left, y - mFontLineSpacingAndAscent, mTextPaint);
+            }
         }
 
         if (savedMatrix) canvas.restore();

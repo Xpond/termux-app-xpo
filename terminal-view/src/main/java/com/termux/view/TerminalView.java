@@ -53,7 +53,7 @@ public final class TerminalView extends View {
     /** Our terminal emulator whose session is {@link #mTermSession}. */
     public TerminalEmulator mEmulator;
 
-    public TerminalRenderer mRenderer;
+    public XPortStyleRenderer mRenderer;
 
     public TerminalViewClient mClient;
 
@@ -512,12 +512,12 @@ public final class TerminalView extends View {
      * @param textSize the new font size, in density-independent pixels.
      */
     public void setTextSize(int textSize) {
-        mRenderer = new TerminalRenderer(textSize, mRenderer == null ? Typeface.MONOSPACE : mRenderer.mTypeface);
+        mRenderer = new XPortStyleRenderer(getContext(), textSize);
         updateSize();
     }
 
     public void setTypeface(Typeface newTypeface) {
-        mRenderer = new TerminalRenderer(mRenderer.mTextSize, newTypeface);
+        mRenderer = new XPortStyleRenderer(getContext(), mRenderer.mTextSize);
         updateSize();
         invalidate();
     }
