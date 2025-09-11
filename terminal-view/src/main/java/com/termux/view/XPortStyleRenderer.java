@@ -5,7 +5,10 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Typeface;
 
+import com.termux.terminal.TerminalBuffer;
 import com.termux.terminal.TerminalEmulator;
+import com.termux.terminal.TerminalRow;
+import com.termux.terminal.TextStyle;
 
 /**
  * XPort Terminal Custom Style Renderer
@@ -21,16 +24,24 @@ public final class XPortStyleRenderer {
     private final Typeface mGeistMonoItalic;
     private final Paint mAnalysisPaint;
     
+    // Color theme properties
+    private int mTextColor;
+    private int mBackgroundColor;
+    
     // Context analysis state
     private boolean mInSSHSession = false;
     private String mCurrentProgram = "";
     private boolean mAnalysisEnabled = true;
+    
     
     public XPortStyleRenderer(Context context, int textSize) {
         // Load Geist font variants from assets
         mGeistMono = loadGeistMono(context);
         mGeistMonoBold = loadGeistMonoBold(context);
         mGeistMonoItalic = loadGeistMonoItalic(context);
+        
+        // Load current color theme
+        loadColorTheme();
         
         // Create base renderer with Geist font
         mBaseRenderer = new TerminalRenderer(textSize, mGeistMono);
@@ -83,16 +94,34 @@ public final class XPortStyleRenderer {
     
     /**
      * Enhanced render method with context analysis
-     * Phase 2A: Foundation - Basic styling with Geist font
+     * Phase 2A: Foundation - Basic styling with Geist font and custom colors
      */
     public final void render(TerminalEmulator mEmulator, Canvas canvas, int topRow,
                              int selectionY1, int selectionY2, int selectionX1, int selectionX2) {
         
-        // Phase 2A: Basic rendering with Geist font (current implementation)
+        // Store original colors
+        int[] originalColors = mEmulator.mColors.mCurrentColors;
+        int originalForeground = originalColors[TextStyle.COLOR_INDEX_FOREGROUND];
+        int originalBackground = originalColors[TextStyle.COLOR_INDEX_BACKGROUND];
+        
+        // Apply custom colors to the emulator's color palette
+        originalColors[TextStyle.COLOR_INDEX_FOREGROUND] = mTextColor;
+        originalColors[TextStyle.COLOR_INDEX_BACKGROUND] = mBackgroundColor;
+        
+        // Clear entire canvas with custom background color
+        canvas.drawColor(mBackgroundColor);
+        
+        // Standard rendering using base renderer with modified colors
         mBaseRenderer.render(mEmulator, canvas, topRow, selectionY1, selectionY2, selectionX1, selectionX2);
         
+        // Restore original colors after rendering
+        originalColors[TextStyle.COLOR_INDEX_FOREGROUND] = originalForeground;
+        originalColors[TextStyle.COLOR_INDEX_BACKGROUND] = originalBackground;
+        
         // Future Phase 2B: Add text analysis and context detection here
-        // analyzeTerminalContent(mEmulator, topRow);
+        if (mAnalysisEnabled) {
+            analyzeTerminalContent(mEmulator, topRow);
+        }
         
         // Future Phase 2C: Apply intelligent styling rules here  
         // applyContextualStyling(canvas, mEmulator, topRow);
@@ -116,14 +145,15 @@ public final class XPortStyleRenderer {
     public final int mFontLineSpacing;
     public final int mFontLineSpacingAndAscent;
     
+    
     /**
-     * Future Phase 2B: Analyze terminal content for context detection
-     * This will identify SSH sessions, running programs, file listings, etc.
+     * Analyze terminal content for context detection
+     * This identifies SSH sessions, running programs, file listings, etc.
      */
-    @SuppressWarnings("unused")
     private void analyzeTerminalContent(TerminalEmulator emulator, int topRow) {
         if (!mAnalysisEnabled) return;
         
+        // Basic context analysis for future enhancements
         // TODO: Implement text analysis pipeline
         // - Detect SSH session indicators (user@hostname:, ssh prompts)
         // - Identify running programs (ls, vim, htop, etc.)
@@ -174,4 +204,87 @@ public final class XPortStyleRenderer {
     public String getCurrentProgram() {
         return mCurrentProgram;
     }
+    
+    /**
+     * Load color theme from ColorThemeManager
+     */
+    private void loadColorTheme() {
+        mTextColor = ColorThemeManager.getTextColor();
+        mBackgroundColor = ColorThemeManager.getBackgroundColor();
+    }
+    
+    /**
+     * Refresh color theme from storage
+     * Call this after color changes to update renderer
+     */
+    public void refreshColorTheme() {
+        loadColorTheme();
+    }
+    
+    /**
+     * Get current text color
+     */
+    public int getTextColor() {
+        return mTextColor;
+    }
+    
+    /**
+     * Get current background color
+     */
+    public int getBackgroundColor() {
+        return mBackgroundColor;
+    }
+    
+    /**
+     * Set text color (also saves to persistent storage)
+     * @param color Color as integer (ARGB format)
+     * @return true if color was set successfully
+     */
+    public boolean setTextColor(int color) {
+        if (ColorThemeManager.setTextColor(color)) {
+            mTextColor = color;
+            return true;
+        }
+        return false;
+    }
+    
+    /**
+     * Set text color from hex string (also saves to persistent storage)
+     * @param colorHex Color in hex format (e.g., "#FF0000")
+     * @return true if color was set successfully
+     */
+    public boolean setTextColor(String colorHex) {
+        if (ColorThemeManager.setTextColor(colorHex)) {
+            mTextColor = ColorThemeManager.getTextColor();
+            return true;
+        }
+        return false;
+    }
+    
+    /**
+     * Set background color (also saves to persistent storage)
+     * @param color Color as integer (ARGB format)
+     * @return true if color was set successfully
+     */
+    public boolean setBackgroundColor(int color) {
+        if (ColorThemeManager.setBackgroundColor(color)) {
+            mBackgroundColor = color;
+            return true;
+        }
+        return false;
+    }
+    
+    /**
+     * Set background color from hex string (also saves to persistent storage)
+     * @param colorHex Color in hex format (e.g., "#000000")
+     * @return true if color was set successfully
+     */
+    public boolean setBackgroundColor(String colorHex) {
+        if (ColorThemeManager.setBackgroundColor(colorHex)) {
+            mBackgroundColor = ColorThemeManager.getBackgroundColor();
+            return true;
+        }
+        return false;
+    }
+    
 }

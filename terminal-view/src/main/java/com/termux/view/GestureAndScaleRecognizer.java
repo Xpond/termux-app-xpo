@@ -77,12 +77,12 @@ final class GestureAndScaleRecognizer {
         mScaleDetector = new ScaleGestureDetector(context, new ScaleGestureDetector.SimpleOnScaleGestureListener() {
             @Override
             public boolean onScaleBegin(ScaleGestureDetector detector) {
-                return true;
+                return false; // Disable zoom gestures by rejecting scale begin
             }
 
             @Override
             public boolean onScale(ScaleGestureDetector detector) {
-                return mListener.onScale(detector.getFocusX(), detector.getFocusY(), detector.getScaleFactor());
+                return false; // Disable zoom processing
             }
         });
         mScaleDetector.setQuickScaleEnabled(false);

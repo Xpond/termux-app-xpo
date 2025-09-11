@@ -327,6 +327,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         
         // Check for font size changes
         checkAndRefreshFontSize();
+        
+        // Check for color changes
+        checkAndRefreshColors();
 
         mIsOnResumeAfterOnCreate = false;
     }
@@ -1122,6 +1125,34 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             }
         } catch (Exception e) {
             Logger.logStackTraceWithMessage(LOG_TAG, "Error checking font size changes", e);
+        }
+    }
+    
+    /**
+     * Check for color changes and refresh terminal if needed
+     */
+    private void checkAndRefreshColors() {
+        try {
+            File triggerFile = new File("/data/data/com.xport.terminal/files/home/.color_changed");
+            if (triggerFile.exists()) {
+                Logger.logDebug(LOG_TAG, "Color change detected, refreshing terminal");
+                
+                // Refresh terminal colors
+                if (mTerminalView != null && mTerminalView.mRenderer != null) {
+                    // Access the XPortStyleRenderer and refresh colors
+                    mTerminalView.mRenderer.refreshColorTheme();
+                    
+                    // Force terminal to redraw
+                    mTerminalView.invalidate();
+                    
+                    Logger.logInfo(LOG_TAG, "Terminal colors refreshed");
+                }
+                
+                // Remove trigger file
+                triggerFile.delete();
+            }
+        } catch (Exception e) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Error checking color changes", e);
         }
     }
     

@@ -40,6 +40,7 @@ Thumbs.db
 
 # Bootstrap build artifacts (not for git)
 bootstrap/
+bin/
 logs/
 
 # Documentation (except README.md)

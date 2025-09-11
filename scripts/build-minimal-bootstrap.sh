@@ -780,6 +780,37 @@ create_package() {
         fi
     fi
     
+    # Copy custom XPort commands (fontsize, textcolor, backgroundcolor)
+    log_info "Copying custom XPort commands..."
+    local custom_bin_dir
+    
+    # Find the NDK build output directory - search for the right path structure
+    for build_hash in $(find "$PROJECT_ROOT/app/build/intermediates/cxx/Release" -maxdepth 1 -type d -name "*" | head -1 | xargs basename 2>/dev/null || echo ""); do
+        if [ -n "$build_hash" ]; then
+            custom_bin_dir="$PROJECT_ROOT/app/build/intermediates/cxx/Release/$build_hash/obj/local/$arch"
+            break
+        fi
+    done
+    
+    # If the above doesn't work, try a direct search
+    if [ ! -d "$custom_bin_dir" ] || [ -z "$custom_bin_dir" ]; then
+        custom_bin_dir=$(find "$PROJECT_ROOT/app/build/intermediates/cxx/Release" -path "*/obj/local/$arch" -type d | head -1)
+    fi
+    
+    if [ -d "$custom_bin_dir" ]; then
+        # Copy custom commands
+        for cmd in fontsize textcolor backgroundcolor; do
+            if [ -f "$custom_bin_dir/$cmd" ]; then
+                cp "$custom_bin_dir/$cmd" "$pkg_dir/bin/"
+                log_info "Copied custom command: $cmd"
+            else
+                log_warning "Custom command not found: $cmd"
+            fi
+        done
+    else
+        log_warning "NDK build output directory not found - custom commands may not be available"
+    fi
+    
     
     # Ensure all binaries have execute permissions
     chmod +x "$pkg_dir/bin/"*

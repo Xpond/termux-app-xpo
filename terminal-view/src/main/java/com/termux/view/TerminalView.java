@@ -187,10 +187,9 @@ public final class TerminalView extends View {
 
             @Override
             public boolean onScale(float focusX, float focusY, float scale) {
-                if (mEmulator == null || isSelectingText()) return true;
-                mScaleFactor *= scale;
-                mScaleFactor = mClient.onScale(mScaleFactor);
-                return true;
+                // Zoom gestures disabled for XPort Terminal
+                // Return false to indicate we don't handle scale gestures
+                return false;
             }
 
             @Override
