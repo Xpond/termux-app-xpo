@@ -14,7 +14,7 @@ public class TermuxAppSharedProperties {
     }
     
     public boolean shouldRunTermuxAmSocketServer() {
-        return false; // Disable by default for XPort
+        return false; // Disable by default for xport
     }
     
     // Directory management methods
@@ -24,7 +24,7 @@ public class TermuxAppSharedProperties {
     
     // Cleanup methods - return 0 to disable cleanup by default
     public int getDeleteTMPDIRFilesOlderThanXDaysOnExit() {
-        return 0; // Disable automatic cleanup for XPort
+        return 0; // Disable automatic cleanup for xport
     }
     
     // Static initialization method

@@ -32,8 +32,8 @@ public class TermuxApplication extends Application {
 
         Logger.logDebug("Starting Application");
 
-        // Initialize XPort minimal bootstrap system
-        com.xport.terminal.XPortBootstrap.ensureBootstrapInstalled(context);
+        // Initialize xport minimal bootstrap system
+        com.xport.terminal.xportBootstrap.ensureBootstrapInstalled(context);
 
         // Init app wide SharedProperties loaded from termux.properties
         TermuxAppSharedProperties properties = TermuxAppSharedProperties.init(context);

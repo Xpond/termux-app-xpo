@@ -1,5 +1,5 @@
 /**
- * XPort Bootstrap Integration for Gradle Build System
+ * xport Bootstrap Integration for Gradle Build System
  * 
  * This script integrates the minimal bootstrap build process with the Android app build.
  * It handles copying the built bootstrap packages into the app's assets directory.
@@ -7,14 +7,14 @@
 
 // Task to build the minimal bootstrap components
 task buildMinimalBootstrap(type: Exec) {
-    group 'XPort'
-    description 'Build minimal bootstrap components for XPort terminal'
+    group 'xport'
+    description 'Build minimal bootstrap components for xport terminal'
     
     workingDir rootProject.projectDir
     commandLine './scripts/build-minimal-bootstrap.sh', 'build'
     
     doFirst {
-        println "Building XPort minimal bootstrap components..."
+        println "Building xport minimal bootstrap components..."
     }
     
     doLast {
@@ -24,7 +24,7 @@ task buildMinimalBootstrap(type: Exec) {
 
 // Task to check bootstrap build requirements
 task checkBootstrapRequirements(type: Exec) {
-    group 'XPort'
+    group 'xport'
     description 'Check if Android NDK and other requirements are available for bootstrap build'
     
     workingDir rootProject.projectDir
@@ -33,7 +33,7 @@ task checkBootstrapRequirements(type: Exec) {
 
 // Task to copy ARM64 bootstrap to assets (for immediate testing)
 task copyBootstrapToAssets {
-    group 'XPort'
+    group 'xport'
     description 'Copy ARM64 bootstrap package to app assets for immediate testing'
     
     doLast {

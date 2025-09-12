@@ -1,8 +1,8 @@
 /**
- * XPort FontSize Command
+ * xport FontSize Command
  * 
  * Simple command-line tool to adjust terminal font size
- * Communicates with the XPort terminal app via file-based interface
+ * Communicates with the xport terminal app via file-based interface
  */
 
 #include <stdio.h>
@@ -15,7 +15,7 @@
 #define FONTSIZE_TRIGGER "/data/data/com.xport.terminal/files/home/.fontsize_changed"
 
 static void show_usage(const char *prog) {
-    printf("XPort Terminal Font Size Manager\n");
+    printf("xport Terminal Font Size Manager\n");
     printf("\n");
     printf("Usage: %s [SCALE]\n", prog);
     printf("       %s --help\n", prog);

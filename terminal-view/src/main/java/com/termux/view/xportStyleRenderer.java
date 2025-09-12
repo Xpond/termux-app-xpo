@@ -11,12 +11,12 @@ import com.termux.terminal.TerminalRow;
 import com.termux.terminal.TextStyle;
 
 /**
- * XPort Terminal Custom Style Renderer
+ * xport Terminal Custom Style Renderer
  * 
  * Phase 2 implementation of intelligent, context-aware terminal styling
  * Uses composition with TerminalRenderer and Geist font integration
  */
-public final class XPortStyleRenderer {
+public final class xportStyleRenderer {
     
     private final TerminalRenderer mBaseRenderer;
     private final Typeface mGeistMono;
@@ -34,7 +34,7 @@ public final class XPortStyleRenderer {
     private boolean mAnalysisEnabled = true;
     
     
-    public XPortStyleRenderer(Context context, int textSize) {
+    public xportStyleRenderer(Context context, int textSize) {
         // Load Geist font variants from assets
         mGeistMono = loadGeistMono(context);
         mGeistMonoBold = loadGeistMonoBold(context);

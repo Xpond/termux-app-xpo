@@ -11,7 +11,7 @@ import java.io.InputStream;
 import java.util.Properties;
 
 /**
- * Color theme management for XPort Terminal
+ * Color theme management for xport Terminal
  * 
  * Provides functionality to get and set terminal text and background colors
  * with persistent storage and runtime modification support.
@@ -176,7 +176,7 @@ public class ColorThemeManager {
             configFile.getParentFile().mkdirs();
             
             try (FileOutputStream fos = new FileOutputStream(configFile)) {
-                props.store(fos, "XPort Terminal Color Configuration");
+                props.store(fos, "xport Terminal Color Configuration");
             }
             
             Log.i(TAG, "Color property saved: " + key + " = " + colorToHex(color));

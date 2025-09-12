@@ -24,7 +24,7 @@ API_LEVEL=21
 # Debug: Print NDK root path  
 echo "DEBUG: ANDROID_NDK_ROOT is set to: $ANDROID_NDK_ROOT"
 
-# Architecture targets - XPort focuses only on ARM64
+# Architecture targets - xport focuses only on ARM64
 ARCHITECTURES=("arm64-v8a")
 
 # Color output functions
@@ -780,8 +780,8 @@ create_package() {
         fi
     fi
     
-    # Copy custom XPort commands (fontsize, textcolor, backgroundcolor)
-    log_info "Copying custom XPort commands..."
+    # Copy custom xport commands (fontsize, textcolor, backgroundcolor)
+    log_info "Copying custom xport commands..."
     local custom_bin_dir
     
     # Find the NDK build output directory - search for the right path structure

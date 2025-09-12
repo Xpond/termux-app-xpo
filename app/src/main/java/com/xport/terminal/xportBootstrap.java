@@ -12,12 +12,12 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 /**
- * XPort Minimal Bootstrap Manager
+ * xport Minimal Bootstrap Manager
  * 
  * This class manages the installation and initialization of the minimal bootstrap
  * system that provides essential SSH functionality with minimal size footprint.
  */
-public class XPortBootstrap {
+public class xportBootstrap {
     // Removed TAG for production build
     
     // Native library loading state

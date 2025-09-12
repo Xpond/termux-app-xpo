@@ -53,7 +53,7 @@ public final class TerminalView extends View {
     /** Our terminal emulator whose session is {@link #mTermSession}. */
     public TerminalEmulator mEmulator;
 
-    public XPortStyleRenderer mRenderer;
+    public xportStyleRenderer mRenderer;
 
     public TerminalViewClient mClient;
 
@@ -187,7 +187,7 @@ public final class TerminalView extends View {
 
             @Override
             public boolean onScale(float focusX, float focusY, float scale) {
-                // Zoom gestures disabled for XPort Terminal
+                // Zoom gestures disabled for xport Terminal
                 // Return false to indicate we don't handle scale gestures
                 return false;
             }
@@ -511,12 +511,12 @@ public final class TerminalView extends View {
      * @param textSize the new font size, in density-independent pixels.
      */
     public void setTextSize(int textSize) {
-        mRenderer = new XPortStyleRenderer(getContext(), textSize);
+        mRenderer = new xportStyleRenderer(getContext(), textSize);
         updateSize();
     }
 
     public void setTypeface(Typeface newTypeface) {
-        mRenderer = new XPortStyleRenderer(getContext(), mRenderer.mTextSize);
+        mRenderer = new xportStyleRenderer(getContext(), mRenderer.mTextSize);
         updateSize();
         invalidate();
     }

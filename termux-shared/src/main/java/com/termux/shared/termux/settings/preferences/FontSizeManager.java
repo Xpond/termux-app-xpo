@@ -9,7 +9,7 @@ import java.io.IOException;
 import java.io.InputStream;
 
 /**
- * Font size management for XPort Terminal
+ * Font size management for xport Terminal
  * 
  * Provides functionality to get and set font size scale (1-10)
  * and convert scales to actual pixel sizes.

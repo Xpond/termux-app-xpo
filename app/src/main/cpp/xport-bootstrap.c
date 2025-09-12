@@ -1,5 +1,5 @@
 /**
- * XPort Minimal Bootstrap Loader
+ * xport Minimal Bootstrap Loader
  * 
  * This file replaces termux-bootstrap.c with a minimal bootstrap loader
  * that extracts and sets up only essential SSH functionality components.
@@ -25,7 +25,7 @@
 #include <android/asset_manager.h>
 #include <android/asset_manager_jni.h>
 
-#define LOG_TAG "XPortBootstrap"
+#define LOG_TAG "xportBootstrap"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
@@ -236,7 +236,7 @@ static int setup_configuration_files() {
     
     FILE* profile = fopen(profile_path, "w");
     if (profile) {
-        fprintf(profile, "# XPort minimal shell profile\n");
+        fprintf(profile, "# xport minimal shell profile\n");
         fprintf(profile, "export PATH=\"%s/bin:$PATH\"\n", BOOTSTRAP_PREFIX_DIR);
         fprintf(profile, "export HOME=\"%s\"\n", BOOTSTRAP_HOME_DIR);
         fprintf(profile, "export TMPDIR=\"%s\"\n", BOOTSTRAP_TMP_DIR);
@@ -260,7 +260,7 @@ static int setup_configuration_files() {
     
     FILE* mkshrc = fopen(mkshrc_path, "w");
     if (mkshrc) {
-        fprintf(mkshrc, "# XPort basic mksh configuration\n");
+        fprintf(mkshrc, "# xport basic mksh configuration\n");
         fprintf(mkshrc, "PS1='${PWD##*/} $ '\n");
         fclose(mkshrc);
         
@@ -275,7 +275,7 @@ static int setup_configuration_files() {
     
     FILE* ssh_config = fopen(ssh_config_path, "w");
     if (ssh_config) {
-        fprintf(ssh_config, "# XPort SSH client configuration\n");
+        fprintf(ssh_config, "# xport SSH client configuration\n");
         fprintf(ssh_config, "Host *\n");
         fprintf(ssh_config, "    Port 22\n");
         fprintf(ssh_config, "    Protocol 2\n");
@@ -303,7 +303,7 @@ static int setup_configuration_files() {
     
     FILE* resolv_conf = fopen(resolv_conf_path, "w");
     if (resolv_conf) {
-        fprintf(resolv_conf, "# XPort DNS resolver configuration\n");
+        fprintf(resolv_conf, "# xport DNS resolver configuration\n");
         fprintf(resolv_conf, "# Use Android system DNS servers\n");
         fprintf(resolv_conf, "nameserver 8.8.8.8\n");
         fprintf(resolv_conf, "nameserver 8.8.4.4\n");
@@ -324,13 +324,13 @@ static int setup_configuration_files() {
     FILE* fontsize_script = fopen(fontsize_path, "w");
     if (fontsize_script) {
         fprintf(fontsize_script, "#!/system/bin/sh\n");
-        fprintf(fontsize_script, "# XPort Terminal Font Size Manager\n");
+        fprintf(fontsize_script, "# xport Terminal Font Size Manager\n");
         fprintf(fontsize_script, "\n");
         fprintf(fontsize_script, "FONTSIZE_FILE=\"%s/.fontsize\"\n", BOOTSTRAP_HOME_DIR);
         fprintf(fontsize_script, "TRIGGER_FILE=\"%s/.fontsize_changed\"\n", BOOTSTRAP_HOME_DIR);
         fprintf(fontsize_script, "\n");
         fprintf(fontsize_script, "show_usage() {\n");
-        fprintf(fontsize_script, "  echo \"XPort Terminal Font Size Manager\"\n");
+        fprintf(fontsize_script, "  echo \"xport Terminal Font Size Manager\"\n");
         fprintf(fontsize_script, "  echo \"\"\n");
         fprintf(fontsize_script, "  echo \"Usage: $0 [SCALE]\"\n");
         fprintf(fontsize_script, "  echo \"       $0 --help\"\n");
@@ -426,8 +426,8 @@ static int is_bootstrap_installed() {
  * Main bootstrap installation function
  */
 JNIEXPORT jboolean JNICALL
-Java_com_xport_terminal_XPortBootstrap_installBootstrap(JNIEnv *env, jclass clazz __attribute__((unused)), jobject asset_manager) {
-    LOGI("Starting XPort minimal bootstrap installation (version %s)", BOOTSTRAP_VERSION);
+Java_com_xport_terminal_xportBootstrap_installBootstrap(JNIEnv *env, jclass clazz __attribute__((unused)), jobject asset_manager) {
+    LOGI("Starting xport minimal bootstrap installation (version %s)", BOOTSTRAP_VERSION);
     
     // Check if already installed
     if (is_bootstrap_installed()) {
@@ -477,7 +477,7 @@ Java_com_xport_terminal_XPortBootstrap_installBootstrap(JNIEnv *env, jclass claz
         return JNI_FALSE;
     }
     
-    LOGI("XPort minimal bootstrap installation completed successfully");
+    LOGI("xport minimal bootstrap installation completed successfully");
     return JNI_TRUE;
 }
 
@@ -485,13 +485,13 @@ Java_com_xport_terminal_XPortBootstrap_installBootstrap(JNIEnv *env, jclass claz
  * Get bootstrap information
  */
 JNIEXPORT jstring JNICALL
-Java_com_xport_terminal_XPortBootstrap_getBootstrapInfo(JNIEnv *env, jclass clazz __attribute__((unused))) {
+Java_com_xport_terminal_xportBootstrap_getBootstrapInfo(JNIEnv *env, jclass clazz __attribute__((unused))) {
     char info[512];
     const char* arch = get_android_architecture();
     int installed = is_bootstrap_installed();
     
     snprintf(info, sizeof(info),
-        "XPort Bootstrap %s\nArchitecture: %s\nInstalled: %s\nPrefix: %s",
+        "xport Bootstrap %s\nArchitecture: %s\nInstalled: %s\nPrefix: %s",
         BOOTSTRAP_VERSION, arch, installed ? "Yes" : "No", BOOTSTRAP_PREFIX_DIR);
     
     return (*env)->NewStringUTF(env, info);
@@ -501,6 +501,6 @@ Java_com_xport_terminal_XPortBootstrap_getBootstrapInfo(JNIEnv *env, jclass claz
  * Check if bootstrap is installed
  */
 JNIEXPORT jboolean JNICALL
-Java_com_xport_terminal_XPortBootstrap_isBootstrapInstalled(JNIEnv *env __attribute__((unused)), jclass clazz __attribute__((unused))) {
+Java_com_xport_terminal_xportBootstrap_isBootstrapInstalled(JNIEnv *env __attribute__((unused)), jclass clazz __attribute__((unused))) {
     return is_bootstrap_installed() ? JNI_TRUE : JNI_FALSE;
 }

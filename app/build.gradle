@@ -2,10 +2,10 @@ plugins {
     id "com.android.application"
 }
 
-// Apply XPort bootstrap integration
+// Apply xport bootstrap integration
 apply from: "../scripts/gradle-bootstrap-integration.gradle"
 
-// Set package variant for XPort
+// Set package variant for xport
 project.ext.packageVariant = "xport"
 
 android {
@@ -29,7 +29,7 @@ android {
 
 
         manifestPlaceholders.TERMUX_PACKAGE_NAME = "com.xport.terminal"
-        manifestPlaceholders.TERMUX_APP_NAME = "XPort"
+        manifestPlaceholders.TERMUX_APP_NAME = "xport"
 
         externalNativeBuild {
             ndkBuild {

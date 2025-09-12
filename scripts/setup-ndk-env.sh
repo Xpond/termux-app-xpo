@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# XPort NDK Environment Setup Script
+# xport NDK Environment Setup Script
 # This script sets up the Android NDK environment for building the minimal bootstrap
 
 set -e

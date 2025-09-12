@@ -26,7 +26,7 @@ public class TermuxAppSharedPreferences {
     
     // Crash report methods
     public boolean areCrashReportNotificationsEnabled(boolean defaultValue) {
-        return defaultValue; // Use default value for XPort
+        return defaultValue; // Use default value for xport
     }
     
     // Shell number tracking methods
@@ -69,7 +69,7 @@ public class TermuxAppSharedPreferences {
     }
     
     public boolean shouldShowTerminalToolbar() {
-        return true; // Default toolbar visibility - enabled for XPort
+        return true; // Default toolbar visibility - enabled for xport
     }
     
     public boolean toogleShowTerminalToolbar() {

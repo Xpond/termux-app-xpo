@@ -1,8 +1,8 @@
 /**
- * XPort BackgroundColor Command
+ * xport BackgroundColor Command
  * 
  * Simple command-line tool to adjust terminal background color
- * Communicates with the XPort terminal app via file-based interface
+ * Communicates with the xport terminal app via file-based interface
  */
 
 #include <stdio.h>
@@ -16,7 +16,7 @@
 #define COLOR_TRIGGER "/data/data/com.xport.terminal/files/home/.color_changed"
 
 static void show_usage(const char *prog) {
-    printf("XPort Terminal Background Color Manager\n");
+    printf("xport Terminal Background Color Manager\n");
     printf("\n");
     printf("Usage: %s [COLOR]\n", prog);
     printf("       %s --help\n", prog);
@@ -137,7 +137,7 @@ static int set_color(const char *hex_color) {
         return 1;
     }
     
-    fprintf(f, "# XPort Terminal Color Configuration\n");
+    fprintf(f, "# xport Terminal Color Configuration\n");
     if (strlen(text_line) > 0) {
         fputs(text_line, f);
     }

@@ -1139,7 +1139,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 
                 // Refresh terminal colors
                 if (mTerminalView != null && mTerminalView.mRenderer != null) {
-                    // Access the XPortStyleRenderer and refresh colors
+                    // Access the xportStyleRenderer and refresh colors
                     mTerminalView.mRenderer.refreshColorTheme();
                     
                     // Force terminal to redraw
