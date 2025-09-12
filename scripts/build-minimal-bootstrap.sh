@@ -780,7 +780,7 @@ create_package() {
         fi
     fi
     
-    # Copy custom xport commands (fontsize, textcolor, backgroundcolor)
+    # Copy custom xport commands (fontsize, font, textcolor, backgroundcolor)
     log_info "Copying custom xport commands..."
     local custom_bin_dir
     
@@ -799,7 +799,7 @@ create_package() {
     
     if [ -d "$custom_bin_dir" ]; then
         # Copy custom commands
-        for cmd in fontsize textcolor backgroundcolor; do
+        for cmd in fontsize font textcolor backgroundcolor; do
             if [ -f "$custom_bin_dir/$cmd" ]; then
                 cp "$custom_bin_dir/$cmd" "$pkg_dir/bin/"
                 log_info "Copied custom command: $cmd"

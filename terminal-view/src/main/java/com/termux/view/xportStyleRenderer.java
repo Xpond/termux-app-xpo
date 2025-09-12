@@ -9,6 +9,7 @@ import com.termux.terminal.TerminalBuffer;
 import com.termux.terminal.TerminalEmulator;
 import com.termux.terminal.TerminalRow;
 import com.termux.terminal.TextStyle;
+import com.termux.view.font.FontManager;
 
 /**
  * xport Terminal Custom Style Renderer
@@ -22,6 +23,9 @@ public final class xportStyleRenderer {
     private final Typeface mGeistMono;
     private final Typeface mGeistMonoBold;
     private final Typeface mGeistMonoItalic;
+    private final Typeface mInter;
+    private final Typeface mInterBold;
+    private final Typeface mInterItalic;
     private final Paint mAnalysisPaint;
     
     // Color theme properties
@@ -40,11 +44,17 @@ public final class xportStyleRenderer {
         mGeistMonoBold = loadGeistMonoBold(context);
         mGeistMonoItalic = loadGeistMonoItalic(context);
         
+        // Load Inter font variants from assets
+        mInter = loadInter(context);
+        mInterBold = loadInterBold(context);
+        mInterItalic = loadInterItalic(context);
+        
         // Load current color theme
         loadColorTheme();
         
-        // Create base renderer with Geist font
-        mBaseRenderer = new TerminalRenderer(textSize, mGeistMono);
+        // Create base renderer with current selected font
+        Typeface currentFont = getCurrentFont(context);
+        mBaseRenderer = new TerminalRenderer(textSize, currentFont);
         
         // Initialize fields from base renderer
         mTextSize = mBaseRenderer.mTextSize;
@@ -56,6 +66,28 @@ public final class xportStyleRenderer {
         // Initialize analysis paint for future text analysis
         mAnalysisPaint = new Paint();
         mAnalysisPaint.setAntiAlias(true);
+    }
+    
+    /**
+     * Get current font based on FontManager selection
+     */
+    private Typeface getCurrentFont(Context context) {
+        String currentFontName = FontManager.getFont();
+        switch (currentFontName) {
+            case FontManager.GEIST_MONO_BOLD:
+                return mGeistMonoBold;
+            case FontManager.GEIST_MONO_ITALIC:
+                return mGeistMonoItalic;
+            case FontManager.INTER_REGULAR:
+                return mInter;
+            case FontManager.INTER_BOLD:
+                return mInterBold;
+            case FontManager.INTER_ITALIC:
+                return mInterItalic;
+            case FontManager.GEIST_MONO_REGULAR:
+            default:
+                return mGeistMono;
+        }
     }
     
     /**
@@ -87,6 +119,40 @@ public final class xportStyleRenderer {
     private static Typeface loadGeistMonoItalic(Context context) {
         try {
             return Typeface.createFromAsset(context.getAssets(), "fonts/GeistMono-Italic.ttf");
+        } catch (Exception e) {
+            return Typeface.DEFAULT;
+        }
+    }
+    
+    /**
+     * Load Inter Regular font from assets
+     */
+    private static Typeface loadInter(Context context) {
+        try {
+            return Typeface.createFromAsset(context.getAssets(), "fonts/Inter-Regular.ttf");
+        } catch (Exception e) {
+            // Fallback to system sans serif if Inter fails to load
+            return Typeface.SANS_SERIF;
+        }
+    }
+    
+    /**
+     * Load Inter Bold font from assets
+     */
+    private static Typeface loadInterBold(Context context) {
+        try {
+            return Typeface.createFromAsset(context.getAssets(), "fonts/Inter-Bold.ttf");
+        } catch (Exception e) {
+            return Typeface.DEFAULT_BOLD;
+        }
+    }
+    
+    /**
+     * Load Inter Italic font from assets
+     */
+    private static Typeface loadInterItalic(Context context) {
+        try {
+            return Typeface.createFromAsset(context.getAssets(), "fonts/Inter-Italic.ttf");
         } catch (Exception e) {
             return Typeface.DEFAULT;
         }
@@ -219,6 +285,30 @@ public final class xportStyleRenderer {
      */
     public void refreshColorTheme() {
         loadColorTheme();
+    }
+    
+    /**
+     * Refresh font from FontManager selection
+     * Call this after font changes to update renderer
+     */
+    public void refreshFont(Context context, int textSize) {
+        Typeface newFont = getCurrentFont(context);
+        // Note: TerminalRenderer is final, so we need to recreate it
+        // This method signature allows the caller to handle renderer recreation
+    }
+    
+    /**
+     * Get current font variant name
+     */
+    public String getCurrentFontName() {
+        return FontManager.getFont();
+    }
+    
+    /**
+     * Get current font display name
+     */
+    public String getCurrentFontDisplayName() {
+        return FontManager.getCurrentFontDisplay();
     }
     
     /**

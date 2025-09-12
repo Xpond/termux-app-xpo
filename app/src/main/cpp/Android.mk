@@ -13,6 +13,12 @@ LOCAL_MODULE := fontsize
 LOCAL_SRC_FILES := fontsize.c
 include $(BUILD_EXECUTABLE)
 
+# Build font executable
+include $(CLEAR_VARS)
+LOCAL_MODULE := font
+LOCAL_SRC_FILES := font.c
+include $(BUILD_EXECUTABLE)
+
 # Build textcolor executable
 include $(CLEAR_VARS)
 LOCAL_MODULE := textcolor
