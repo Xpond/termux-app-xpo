@@ -25,6 +25,7 @@ public class FontManager {
     public static final String INTER_REGULAR = "inter-regular";
     public static final String INTER_BOLD = "inter-bold";
     public static final String INTER_ITALIC = "inter-italic";
+    public static final String INTER_THIN = "inter-thin";
     
     // Default font
     private static final String DEFAULT_FONT = GEIST_MONO_REGULAR;
@@ -104,6 +105,8 @@ public class FontManager {
                 return "Inter Bold";
             case INTER_ITALIC:
                 return "Inter Italic";
+            case INTER_THIN:
+                return "Inter Thin";
             default:
                 return "Geist Mono Regular";
         }
@@ -125,7 +128,8 @@ public class FontManager {
                GEIST_MONO_ITALIC.equals(font) ||
                INTER_REGULAR.equals(font) ||
                INTER_BOLD.equals(font) ||
-               INTER_ITALIC.equals(font);
+               INTER_ITALIC.equals(font) ||
+               INTER_THIN.equals(font);
     }
     
     /**
@@ -159,6 +163,8 @@ public class FontManager {
                 return "fonts/Inter-Bold.ttf";
             case INTER_ITALIC:
                 return "fonts/Inter-Italic.ttf";
+            case INTER_THIN:
+                return "fonts/Inter-Thin.ttf";
             default:
                 return "fonts/GeistMono-Regular.ttf";
         }
@@ -175,7 +181,8 @@ public class FontManager {
             GEIST_MONO_ITALIC,
             INTER_REGULAR,
             INTER_BOLD,
-            INTER_ITALIC
+            INTER_ITALIC,
+            INTER_THIN
         };
     }
     
@@ -190,7 +197,8 @@ public class FontManager {
             "Geist Mono Italic",
             "Inter Regular",
             "Inter Bold",
-            "Inter Italic"
+            "Inter Italic",
+            "Inter Thin"
         };
     }
 }

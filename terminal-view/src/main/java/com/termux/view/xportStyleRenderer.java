@@ -26,6 +26,7 @@ public final class xportStyleRenderer {
     private final Typeface mInter;
     private final Typeface mInterBold;
     private final Typeface mInterItalic;
+    private final Typeface mInterThin;
     private final Paint mAnalysisPaint;
     
     // Color theme properties
@@ -48,6 +49,7 @@ public final class xportStyleRenderer {
         mInter = loadInter(context);
         mInterBold = loadInterBold(context);
         mInterItalic = loadInterItalic(context);
+        mInterThin = loadInterThin(context);
         
         // Load current color theme
         loadColorTheme();
@@ -84,6 +86,8 @@ public final class xportStyleRenderer {
                 return mInterBold;
             case FontManager.INTER_ITALIC:
                 return mInterItalic;
+            case FontManager.INTER_THIN:
+                return mInterThin;
             case FontManager.GEIST_MONO_REGULAR:
             default:
                 return mGeistMono;
@@ -157,7 +161,18 @@ public final class xportStyleRenderer {
             return Typeface.DEFAULT;
         }
     }
-    
+
+    /**
+     * Load Inter Thin font from assets
+     */
+    private static Typeface loadInterThin(Context context) {
+        try {
+            return Typeface.createFromAsset(context.getAssets(), "fonts/Inter-Thin.ttf");
+        } catch (Exception e) {
+            return Typeface.DEFAULT;
+        }
+    }
+
     /**
      * Enhanced render method with context analysis
      * Phase 2A: Foundation - Basic styling with Geist font and custom colors

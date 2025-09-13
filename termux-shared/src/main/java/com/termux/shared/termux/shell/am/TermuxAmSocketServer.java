@@ -17,7 +17,6 @@ import com.termux.shared.shell.am.AmSocketServerRunConfig;
 import com.termux.shared.shell.am.AmSocketServer;
 import com.termux.shared.termux.TermuxConstants;
 import com.termux.shared.termux.crash.TermuxCrashUtils;
-import com.termux.shared.termux.plugins.TermuxPluginUtils;
 import com.termux.shared.termux.settings.properties.TermuxAppSharedProperties;
 import com.termux.shared.termux.settings.properties.TermuxPropertyConstants;
 import com.termux.shared.termux.shell.command.environment.TermuxAppShellEnvironment;
@@ -160,8 +159,9 @@ public class TermuxAmSocketServer {
     public static synchronized void showErrorNotification(@NonNull Context context, @NonNull Error error,
                                                           @NonNull LocalSocketRunConfig localSocketRunConfig,
                                                           @Nullable LocalClientSocket clientSocket) {
-        TermuxPluginUtils.sendPluginCommandErrorNotification(context, LOG_TAG,
-            LocalSocketManager.getErrorMarkdownString(error, localSocketRunConfig, clientSocket));
+        // Error notification removed - not needed for SSH-only terminal
+        // Log error instead
+        Logger.logError(LOG_TAG, "Socket server error: " + error.getMessage());
     }
 
 

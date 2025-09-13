@@ -38,7 +38,7 @@ public class TermuxShellManager {
     /**
      * The pending plugin ExecutionCommands that have yet to be processed by this service.
      */
-    public final List<ExecutionCommand> mPendingPluginExecutionCommands = new ArrayList<>();
+    // Plugin execution commands list removed - not needed for SSH-only terminal
 
     /**
      * The {@link ExecutionCommand.Runner#APP_SHELL} number after app process was started/restarted.

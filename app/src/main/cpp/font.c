@@ -21,6 +21,7 @@
 #define FONT_INTER_REGULAR "inter-regular"
 #define FONT_INTER_BOLD "inter-bold"
 #define FONT_INTER_ITALIC "inter-italic"
+#define FONT_INTER_THIN "inter-thin"
 
 static void show_usage(const char *prog) {
     printf("xport Terminal Font Manager\n");
@@ -37,6 +38,7 @@ static void show_usage(const char *prog) {
     printf("    %s        # Inter Regular\n", FONT_INTER_REGULAR);
     printf("    %s          # Inter Bold\n", FONT_INTER_BOLD);
     printf("    %s        # Inter Italic\n", FONT_INTER_ITALIC);
+    printf("    %s           # Inter Thin\n", FONT_INTER_THIN);
     printf("\n");
     printf("Without arguments, shows current font and all available fonts.\n");
     printf("\n");
@@ -60,6 +62,8 @@ static const char* get_font_display_name(const char* font_variant) {
         return "Inter Bold";
     } else if (strcmp(font_variant, FONT_INTER_ITALIC) == 0) {
         return "Inter Italic";
+    } else if (strcmp(font_variant, FONT_INTER_THIN) == 0) {
+        return "Inter Thin";
     } else {
         return "Unknown";
     }
@@ -71,7 +75,8 @@ static int is_valid_font(const char* font_variant) {
             strcmp(font_variant, FONT_GEIST_ITALIC) == 0 ||
             strcmp(font_variant, FONT_INTER_REGULAR) == 0 ||
             strcmp(font_variant, FONT_INTER_BOLD) == 0 ||
-            strcmp(font_variant, FONT_INTER_ITALIC) == 0);
+            strcmp(font_variant, FONT_INTER_ITALIC) == 0 ||
+            strcmp(font_variant, FONT_INTER_THIN) == 0);
 }
 
 static const char* get_current_font(void) {
@@ -102,8 +107,8 @@ static int set_font(const char* font_variant) {
         fprintf(stderr, "Available variants:\n");
         fprintf(stderr, "  Geist Mono: %s, %s, %s\n", 
                 FONT_GEIST_REGULAR, FONT_GEIST_BOLD, FONT_GEIST_ITALIC);
-        fprintf(stderr, "  Inter: %s, %s, %s\n", 
-                FONT_INTER_REGULAR, FONT_INTER_BOLD, FONT_INTER_ITALIC);
+        fprintf(stderr, "  Inter: %s, %s, %s, %s\n",
+                FONT_INTER_REGULAR, FONT_INTER_BOLD, FONT_INTER_ITALIC, FONT_INTER_THIN);
         return 1;
     }
     
@@ -172,11 +177,16 @@ static void show_all_fonts() {
            FONT_INTER_BOLD,
            (strcmp(current_font, FONT_INTER_BOLD) == 0) ? " (current)" : "",
            "# Inter Bold");
-    printf("    %s%-18s%s %s\n", 
+    printf("    %s%-18s%s %s\n",
            (strcmp(current_font, FONT_INTER_ITALIC) == 0) ? "* " : "  ",
            FONT_INTER_ITALIC,
            (strcmp(current_font, FONT_INTER_ITALIC) == 0) ? " (current)" : "",
            "# Inter Italic");
+    printf("    %s%-18s%s %s\n",
+           (strcmp(current_font, FONT_INTER_THIN) == 0) ? "* " : "  ",
+           FONT_INTER_THIN,
+           (strcmp(current_font, FONT_INTER_THIN) == 0) ? " (current)" : "",
+           "# Inter Thin");
 }
 
 int main(int argc, char *argv[]) {

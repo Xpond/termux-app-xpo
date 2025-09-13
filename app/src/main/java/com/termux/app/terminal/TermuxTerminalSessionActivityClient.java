@@ -147,16 +147,8 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
 
         int index = service.getIndexOfSession(finishedSession);
 
-        // For plugin commands that expect the result back, we should immediately close the session
-        // and send the result back instead of waiting fo the user to press enter.
-        // The plugin can handle/show errors itself.
-        boolean isPluginExecutionCommandWithPendingResult = false;
-        TermuxSession termuxSession = service.getTermuxSession(index);
-        if (termuxSession != null) {
-            isPluginExecutionCommandWithPendingResult = termuxSession.getExecutionCommand().isPluginExecutionCommandWithPendingResult();
-            if (isPluginExecutionCommandWithPendingResult)
-                Logger.logVerbose(LOG_TAG, "The \"" + finishedSession.mSessionName + "\" session will be force finished automatically since result in pending.");
-        }
+        // Plugin result processing removed - SSH-only terminal always waits for user interaction
+        boolean isPluginExecutionCommandWithPendingResult = false; // Always false now
 
         if (mActivity.isVisible() && finishedSession != mActivity.getCurrentSession()) {
             // Show toast for non-current sessions that exit.
@@ -168,13 +160,13 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
         if (mActivity.getPackageManager().hasSystemFeature(PackageManager.FEATURE_LEANBACK)) {
             // On Android TV devices we need to use older behaviour because we may
             // not be able to have multiple launcher icons.
-            if (service.getTermuxSessionsSize() > 1 || isPluginExecutionCommandWithPendingResult) {
+            if (service.getTermuxSessionsSize() > 1) { // Plugin condition removed
                 removeFinishedSession(finishedSession);
             }
         } else {
             // Once we have a separate launcher icon for the failsafe session, it
             // should be safe to auto-close session on exit code '0' or '130'.
-            if (finishedSession.getExitStatus() == 0 || finishedSession.getExitStatus() == 130 || isPluginExecutionCommandWithPendingResult) {
+            if (finishedSession.getExitStatus() == 0 || finishedSession.getExitStatus() == 130) { // Plugin condition removed
                 removeFinishedSession(finishedSession);
             }
         }
