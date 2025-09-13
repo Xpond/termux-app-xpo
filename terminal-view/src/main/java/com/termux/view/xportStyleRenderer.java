@@ -23,9 +23,6 @@ public final class xportStyleRenderer {
     private final Typeface mGeistMono;
     private final Typeface mGeistMonoBold;
     private final Typeface mGeistMonoItalic;
-    private final Typeface mInter;
-    private final Typeface mInterBold;
-    private final Typeface mInterItalic;
     private final Typeface mInterThin;
     private final Paint mAnalysisPaint;
     
@@ -45,10 +42,7 @@ public final class xportStyleRenderer {
         mGeistMonoBold = loadGeistMonoBold(context);
         mGeistMonoItalic = loadGeistMonoItalic(context);
         
-        // Load Inter font variants from assets
-        mInter = loadInter(context);
-        mInterBold = loadInterBold(context);
-        mInterItalic = loadInterItalic(context);
+        // Load Inter font variant from assets
         mInterThin = loadInterThin(context);
         
         // Load current color theme
@@ -80,12 +74,6 @@ public final class xportStyleRenderer {
                 return mGeistMonoBold;
             case FontManager.GEIST_MONO_ITALIC:
                 return mGeistMonoItalic;
-            case FontManager.INTER_REGULAR:
-                return mInter;
-            case FontManager.INTER_BOLD:
-                return mInterBold;
-            case FontManager.INTER_ITALIC:
-                return mInterItalic;
             case FontManager.INTER_THIN:
                 return mInterThin;
             case FontManager.GEIST_MONO_REGULAR:
@@ -128,39 +116,6 @@ public final class xportStyleRenderer {
         }
     }
     
-    /**
-     * Load Inter Regular font from assets
-     */
-    private static Typeface loadInter(Context context) {
-        try {
-            return Typeface.createFromAsset(context.getAssets(), "fonts/Inter-Regular.ttf");
-        } catch (Exception e) {
-            // Fallback to system sans serif if Inter fails to load
-            return Typeface.SANS_SERIF;
-        }
-    }
-    
-    /**
-     * Load Inter Bold font from assets
-     */
-    private static Typeface loadInterBold(Context context) {
-        try {
-            return Typeface.createFromAsset(context.getAssets(), "fonts/Inter-Bold.ttf");
-        } catch (Exception e) {
-            return Typeface.DEFAULT_BOLD;
-        }
-    }
-    
-    /**
-     * Load Inter Italic font from assets
-     */
-    private static Typeface loadInterItalic(Context context) {
-        try {
-            return Typeface.createFromAsset(context.getAssets(), "fonts/Inter-Italic.ttf");
-        } catch (Exception e) {
-            return Typeface.DEFAULT;
-        }
-    }
 
     /**
      * Load Inter Thin font from assets

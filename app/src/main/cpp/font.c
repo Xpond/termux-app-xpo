@@ -18,9 +18,6 @@
 #define FONT_GEIST_REGULAR "geistmono-regular"
 #define FONT_GEIST_BOLD "geistmono-bold"
 #define FONT_GEIST_ITALIC "geistmono-italic"
-#define FONT_INTER_REGULAR "inter-regular"
-#define FONT_INTER_BOLD "inter-bold"
-#define FONT_INTER_ITALIC "inter-italic"
 #define FONT_INTER_THIN "inter-thin"
 
 static void show_usage(const char *prog) {
@@ -35,9 +32,6 @@ static void show_usage(const char *prog) {
     printf("    %s       # Geist Mono Bold\n", FONT_GEIST_BOLD);
     printf("    %s      # Geist Mono Italic\n", FONT_GEIST_ITALIC);
     printf("  Inter:\n");
-    printf("    %s        # Inter Regular\n", FONT_INTER_REGULAR);
-    printf("    %s          # Inter Bold\n", FONT_INTER_BOLD);
-    printf("    %s        # Inter Italic\n", FONT_INTER_ITALIC);
     printf("    %s           # Inter Thin\n", FONT_INTER_THIN);
     printf("\n");
     printf("Without arguments, shows current font and all available fonts.\n");
@@ -45,8 +39,7 @@ static void show_usage(const char *prog) {
     printf("Examples:\n");
     printf("  %s                         # Show current font and list all\n", prog);
     printf("  %s %s      # Set to Geist italic\n", prog, FONT_GEIST_ITALIC);
-    printf("  %s %s          # Set to Inter bold\n", prog, FONT_INTER_BOLD);
-    printf("  %s %s        # Set to Inter regular\n", prog, FONT_INTER_REGULAR);
+    printf("  %s %s           # Set to Inter thin\n", prog, FONT_INTER_THIN);
 }
 
 static const char* get_font_display_name(const char* font_variant) {
@@ -56,12 +49,6 @@ static const char* get_font_display_name(const char* font_variant) {
         return "Geist Mono Bold";
     } else if (strcmp(font_variant, FONT_GEIST_ITALIC) == 0) {
         return "Geist Mono Italic";
-    } else if (strcmp(font_variant, FONT_INTER_REGULAR) == 0) {
-        return "Inter Regular";
-    } else if (strcmp(font_variant, FONT_INTER_BOLD) == 0) {
-        return "Inter Bold";
-    } else if (strcmp(font_variant, FONT_INTER_ITALIC) == 0) {
-        return "Inter Italic";
     } else if (strcmp(font_variant, FONT_INTER_THIN) == 0) {
         return "Inter Thin";
     } else {
@@ -73,9 +60,6 @@ static int is_valid_font(const char* font_variant) {
     return (strcmp(font_variant, FONT_GEIST_REGULAR) == 0 ||
             strcmp(font_variant, FONT_GEIST_BOLD) == 0 ||
             strcmp(font_variant, FONT_GEIST_ITALIC) == 0 ||
-            strcmp(font_variant, FONT_INTER_REGULAR) == 0 ||
-            strcmp(font_variant, FONT_INTER_BOLD) == 0 ||
-            strcmp(font_variant, FONT_INTER_ITALIC) == 0 ||
             strcmp(font_variant, FONT_INTER_THIN) == 0);
 }
 
@@ -107,8 +91,7 @@ static int set_font(const char* font_variant) {
         fprintf(stderr, "Available variants:\n");
         fprintf(stderr, "  Geist Mono: %s, %s, %s\n", 
                 FONT_GEIST_REGULAR, FONT_GEIST_BOLD, FONT_GEIST_ITALIC);
-        fprintf(stderr, "  Inter: %s, %s, %s, %s\n",
-                FONT_INTER_REGULAR, FONT_INTER_BOLD, FONT_INTER_ITALIC, FONT_INTER_THIN);
+        fprintf(stderr, "  Inter: %s\n", FONT_INTER_THIN);
         return 1;
     }
     
@@ -167,21 +150,6 @@ static void show_all_fonts() {
     
     // Inter family
     printf("  Inter:\n");
-    printf("    %s%-18s%s %s\n", 
-           (strcmp(current_font, FONT_INTER_REGULAR) == 0) ? "* " : "  ",
-           FONT_INTER_REGULAR,
-           (strcmp(current_font, FONT_INTER_REGULAR) == 0) ? " (current)" : "",
-           "# Inter Regular");
-    printf("    %s%-18s%s %s\n", 
-           (strcmp(current_font, FONT_INTER_BOLD) == 0) ? "* " : "  ",
-           FONT_INTER_BOLD,
-           (strcmp(current_font, FONT_INTER_BOLD) == 0) ? " (current)" : "",
-           "# Inter Bold");
-    printf("    %s%-18s%s %s\n",
-           (strcmp(current_font, FONT_INTER_ITALIC) == 0) ? "* " : "  ",
-           FONT_INTER_ITALIC,
-           (strcmp(current_font, FONT_INTER_ITALIC) == 0) ? " (current)" : "",
-           "# Inter Italic");
     printf("    %s%-18s%s %s\n",
            (strcmp(current_font, FONT_INTER_THIN) == 0) ? "* " : "  ",
            FONT_INTER_THIN,
