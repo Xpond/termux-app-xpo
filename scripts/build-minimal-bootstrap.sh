@@ -17,8 +17,24 @@ TOYBOX_VERSION="0.8.10"
 OPENSSL_VERSION="3.1.1"
 DROPBEAR_VERSION="2025.88"
 
-# Android NDK configuration - hardcoded since it never changes
-ANDROID_NDK_ROOT="/opt/android-sdk/ndk/22.1.7171670"
+# Android NDK configuration. The shipped bootstrap was built with NDK
+# 22.1.7171670 (r22b); honour $ANDROID_NDK_ROOT if set, else search the
+# common SDK locations for that version.
+NDK_VERSION="22.1.7171670"
+if [ -z "$ANDROID_NDK_ROOT" ]; then
+    for candidate in \
+        "/opt/android-sdk/ndk/$NDK_VERSION" \
+        "$HOME/Android/Sdk/ndk/$NDK_VERSION" \
+        "${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}/ndk/$NDK_VERSION" \
+        "${ANDROID_HOME:-}/ndk/$NDK_VERSION"; do
+        if [ -d "$candidate" ]; then
+            ANDROID_NDK_ROOT="$candidate"
+            break
+        fi
+    done
+    # Fall back to the hardcoded path so the requirements check reports it.
+    ANDROID_NDK_ROOT="${ANDROID_NDK_ROOT:-/opt/android-sdk/ndk/$NDK_VERSION}"
+fi
 API_LEVEL=21
 
 # Debug: Print NDK root path  
@@ -55,14 +71,18 @@ check_requirements() {
         exit 1
     fi
     
-    # Check required tools
-    local required_tools=("wget" "make")
+    # Check required tools (need wget or curl for downloads)
+    local required_tools=("make")
     for tool in "${required_tools[@]}"; do
         if ! command -v "$tool" >/dev/null 2>&1; then
             log_error "Required tool not found: $tool"
             exit 1
         fi
     done
+    if ! command -v wget >/dev/null 2>&1 && ! command -v curl >/dev/null 2>&1; then
+        log_error "Required tool not found: wget or curl"
+        exit 1
+    fi
     
     log_success "Android NDK found at: $ANDROID_NDK_ROOT"
     log_success "All required build tools found"
@@ -149,26 +169,36 @@ EOF
 }
 
 # Download source packages
+# Fetch a URL to a file, using wget or curl (whichever is available)
+fetch() {
+    local url="$1" out="$2"
+    if command -v wget >/dev/null 2>&1; then
+        wget "$url" -O "$out"
+    else
+        curl -fL "$url" -o "$out"
+    fi
+}
+
 download_sources() {
     log_info "Downloading source packages..."
-    
+
     cd "$DOWNLOADS_DIR"
-    
+
     # Download Toybox
     if [ ! -f "toybox-${TOYBOX_VERSION}.tar.gz" ]; then
-        wget "https://github.com/landley/toybox/archive/refs/tags/${TOYBOX_VERSION}.tar.gz" -O "toybox-${TOYBOX_VERSION}.tar.gz"
+        fetch "https://github.com/landley/toybox/archive/refs/tags/${TOYBOX_VERSION}.tar.gz" "toybox-${TOYBOX_VERSION}.tar.gz"
     fi
-    
+
     # Download OpenSSL
     if [ ! -f "openssl-${OPENSSL_VERSION}.tar.gz" ]; then
-        wget "https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz"
+        fetch "https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz" "openssl-${OPENSSL_VERSION}.tar.gz"
     fi
-    
+
     # Download Dropbear
     if [ ! -f "dropbear-${DROPBEAR_VERSION}.tar.bz2" ]; then
-        wget "https://matt.ucc.asn.au/dropbear/releases/dropbear-${DROPBEAR_VERSION}.tar.bz2"
+        fetch "https://matt.ucc.asn.au/dropbear/releases/dropbear-${DROPBEAR_VERSION}.tar.bz2" "dropbear-${DROPBEAR_VERSION}.tar.bz2"
     fi
-    
+
     log_success "Source packages downloaded"
 }
 
@@ -784,22 +814,20 @@ create_package() {
     log_info "Copying custom xport commands..."
     local custom_bin_dir
     
-    # Find the NDK build output directory - search for the right path structure
-    for build_hash in $(find "$PROJECT_ROOT/app/build/intermediates/cxx/Release" -maxdepth 1 -type d -name "*" | head -1 | xargs basename 2>/dev/null || echo ""); do
-        if [ -n "$build_hash" ]; then
-            custom_bin_dir="$PROJECT_ROOT/app/build/intermediates/cxx/Release/$build_hash/obj/local/$arch"
+    # Find the NDK build output directory. Gradle puts it under
+    # cxx/<Variant>/<hash>/obj/local/<arch>; prefer whichever variant
+    # actually contains the compiled commands (Release or Debug).
+    custom_bin_dir=""
+    for d in $(find "$PROJECT_ROOT/app/build/intermediates/cxx" -path "*/obj/local/$arch" -type d 2>/dev/null); do
+        if [ -f "$d/fontsize" ]; then
+            custom_bin_dir="$d"
             break
         fi
     done
     
-    # If the above doesn't work, try a direct search
-    if [ ! -d "$custom_bin_dir" ] || [ -z "$custom_bin_dir" ]; then
-        custom_bin_dir=$(find "$PROJECT_ROOT/app/build/intermediates/cxx/Release" -path "*/obj/local/$arch" -type d | head -1)
-    fi
-    
     if [ -d "$custom_bin_dir" ]; then
         # Copy custom commands
-        for cmd in fontsize font textcolor backgroundcolor; do
+        for cmd in fontsize font textcolor backgroundcolor sysmon debug_proc; do
             if [ -f "$custom_bin_dir/$cmd" ]; then
                 cp "$custom_bin_dir/$cmd" "$pkg_dir/bin/"
                 log_info "Copied custom command: $cmd"

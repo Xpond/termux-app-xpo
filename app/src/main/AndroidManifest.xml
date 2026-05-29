@@ -109,6 +109,14 @@
             </intent-filter>
         </receiver>
 
+        <receiver
+            android:name="com.termux.app.SysmonReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.xport.terminal.SYSMON" />
+            </intent-filter>
+        </receiver>
+
 
 
         <service
