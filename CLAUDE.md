@@ -65,10 +65,3 @@ reads newest-first. When in doubt, ask `rb` before you read the source.
 
 ---
 
-**On a fresh repo, there's no story yet.** `rb map` and `rb outline` still work —
-they read the live source tree, so you can survey structure from day one. But
-`rb log`, `rb search`, `rb recent`, and `rb sessions` will come up empty until CC
-has actually worked here, and `rb commits` until something ships. That's
-expected, not broken — the history fills in as you go. Lean on `map` and
-`outline` now; the rest of the loop wakes up once there's a session or two behind
-you.

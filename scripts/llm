@@ -1,0 +1,177 @@
+#!/system/bin/sh
+# xport on-device LLM runner — a thin Ollama-like wrapper around llama-cli.
+# No daemon: pull downloads a GGUF, run chats with it. Models live in ~/models.
+
+PREFIX="/data/data/com.xport.terminal/files/usr"
+HOME_DIR="/data/data/com.xport.terminal/files/home"
+MODELS_DIR="$HOME_DIR/models"
+DEFAULT_FILE="$MODELS_DIR/.default"
+THREADS=4
+CTX=2048
+
+# Curated name -> direct GGUF URL (Q4_K_M). Extend by adding lines here.
+url_for() {
+  case "$1" in
+    qwen2.5:0.5b) echo "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf" ;;
+    qwen2.5:1.5b) echo "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf" ;;
+    qwen2.5:3b)   echo "https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf" ;;
+    llama3.2:1b)  echo "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf" ;;
+    llama3.2:3b)  echo "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf" ;;
+    gemma2:2b)    echo "https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf" ;;
+    gemma4:e4b)   echo "https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_K_M.gguf" ;;
+    *)            echo "" ;;
+  esac
+}
+
+# Map a name to its local file path (~/models/<name with : -> _>.gguf).
+file_for() {
+  echo "$MODELS_DIR/$(echo "$1" | sed 's/:/_/g').gguf"
+}
+
+known_names() {
+  echo "  qwen2.5:0.5b  qwen2.5:1.5b  qwen2.5:3b"
+  echo "  llama3.2:1b   llama3.2:3b   gemma2:2b   gemma4:e4b"
+}
+
+usage() {
+  echo "xport LLM runner"
+  echo ""
+  echo "Usage:"
+  echo "  llm                 Chat with the default model"
+  echo "  llm run <name>      Chat with a model (sets it as default)"
+  echo "  llm pull <name>     Download a model into ~/models"
+  echo "  llm pull <url>      Download any GGUF by direct URL"
+  echo "  llm list            List downloaded models"
+  echo "  llm rm <name>       Delete a downloaded model"
+  echo "  llm names           Show known model names"
+  echo ""
+  echo "Known names:"
+  known_names
+  echo ""
+  echo "Tip: -t $THREADS threads, -c $CTX context. Bigger models = better,"
+  echo "     slower, and need more RAM. Stay within what your device fits."
+}
+
+do_pull() {
+  arg="$1"
+  if [ -z "$arg" ]; then
+    echo "Error: 'llm pull' needs a model name or URL" >&2
+    echo "Known names:"; known_names; return 1
+  fi
+  mkdir -p "$MODELS_DIR"
+  case "$arg" in
+    http://*|https://*)
+      url="$arg"
+      out="$MODELS_DIR/$(basename "$url" | sed 's/[?].*//')"
+      ;;
+    *)
+      url="$(url_for "$arg")"
+      if [ -z "$url" ]; then
+        echo "Error: unknown model '$arg'" >&2
+        echo "Known names:"; known_names
+        echo "Or pass a direct GGUF URL." >&2
+        return 1
+      fi
+      out="$(file_for "$arg")"
+      ;;
+  esac
+  if [ -f "$out" ]; then
+    echo "Already downloaded: $out"
+    return 0
+  fi
+  echo "Downloading $arg"
+  echo "  -> $out"
+  # The shell child has no DNS resolver, so the app process downloads for us:
+  # write a request file, then poll the status the app writes back.
+  STATUS="$HOME_DIR/.llm_download_status"
+  REQ="$HOME_DIR/.llm_download"
+  rm -f "$STATUS"
+  # url on line 1, dest on line 2 (no printf/tab: not all applets are present).
+  { echo "$url"; echo "$out"; } > "$REQ"
+  last=""
+  while true; do
+    [ -f "$STATUS" ] || { sleep 1; continue; }
+    s=$(cat "$STATUS" 2>/dev/null)
+    case "$s" in
+      DONE)
+        echo "Done: $out ($(du -h "$out" 2>/dev/null | cut -f1))"
+        rm -f "$STATUS"; return 0 ;;
+      ERROR*)
+        echo "Error: ${s#ERROR }" >&2
+        rm -f "$STATUS" "$out"; return 1 ;;
+      DOWNLOADING*)
+        [ "$s" != "$last" ] && { echo "  ${s#DOWNLOADING }%"; last="$s"; } ;;
+    esac
+    sleep 1
+  done
+}
+
+do_list() {
+  if [ ! -d "$MODELS_DIR" ]; then
+    echo "No models yet. Try: llm pull qwen2.5:1.5b"
+    return 0
+  fi
+  found=0
+  def=""
+  [ -f "$DEFAULT_FILE" ] && def="$(cat "$DEFAULT_FILE")"
+  for f in "$MODELS_DIR"/*.gguf; do
+    [ -f "$f" ] || continue
+    found=1
+    name="$(basename "$f" .gguf)"
+    mark=" "
+    [ "$f" = "$def" ] && mark="*"
+    echo "$mark $name  ($(du -h "$f" 2>/dev/null | cut -f1))"
+  done
+  if [ "$found" = "0" ]; then
+    echo "No models yet. Try: llm pull qwen2.5:1.5b"
+  else
+    echo ""
+    echo "* = default.  Run with: llm run <name>"
+  fi
+}
+
+# Resolve a model arg to a file: a known name, a bare ~/models name, or a path.
+resolve_model() {
+  arg="$1"
+  [ -f "$arg" ] && { echo "$arg"; return 0; }
+  f="$(file_for "$arg")"; [ -f "$f" ] && { echo "$f"; return 0; }
+  f="$MODELS_DIR/$arg.gguf"; [ -f "$f" ] && { echo "$f"; return 0; }
+  f="$MODELS_DIR/$arg"; [ -f "$f" ] && { echo "$f"; return 0; }
+  echo ""
+}
+
+do_run() {
+  arg="$1"
+  if [ -z "$arg" ]; then
+    if [ -f "$DEFAULT_FILE" ]; then
+      model="$(cat "$DEFAULT_FILE")"
+    else
+      echo "No default model set. Pull one, then 'llm run <name>'." >&2
+      echo "Known names:"; known_names; return 1
+    fi
+  else
+    model="$(resolve_model "$arg")"
+    if [ -z "$model" ]; then
+      echo "Error: model '$arg' not found in ~/models" >&2
+      echo "Download it first: llm pull $arg" >&2
+      return 1
+    fi
+  fi
+  if [ ! -f "$model" ]; then
+    echo "Error: model file missing: $model" >&2
+    return 1
+  fi
+  mkdir -p "$MODELS_DIR"
+  echo "$model" > "$DEFAULT_FILE"
+  exec "$PREFIX/bin/llama-cli" -m "$model" -t "$THREADS" -c "$CTX"
+}
+
+case "$1" in
+  ""|run)        do_run "$2" ;;
+  pull)          do_pull "$2" ;;
+  list|ls)       do_list ;;
+  names)         echo "Known model names:"; known_names ;;
+  rm)            f="$(resolve_model "$2")"; [ -n "$f" ] && rm -f "$f" && echo "Removed $2" || echo "Not found: $2" >&2 ;;
+  -h|--help|help) usage ;;
+  *)             do_run "$1" ;;
+esac

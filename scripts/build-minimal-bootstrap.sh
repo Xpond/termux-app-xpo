@@ -37,7 +37,23 @@ if [ -z "$ANDROID_NDK_ROOT" ]; then
 fi
 API_LEVEL=21
 
-# Debug: Print NDK root path  
+# llama.cpp configuration (on-device LLM). Built with a SECOND, isolated NDK
+# (r27c) + the SDK's bundled cmake/ninja, so the r22b reproducibility chain
+# above is never touched. Pinned commit keeps the build reproducible.
+LLAMA_NDK_VERSION="27.2.12479018"
+LLAMA_CMAKE_VERSION="3.31.5"
+LLAMA_COMMIT="2084434e666c5b08cd5e2a2f256e583a0f85a44c"
+SDK_DIR="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Android/Sdk}}"
+LLAMA_NDK_ROOT="$SDK_DIR/ndk/$LLAMA_NDK_VERSION"
+LLAMA_CMAKE="$SDK_DIR/cmake/$LLAMA_CMAKE_VERSION/bin/cmake"
+LLAMA_NINJA="$SDK_DIR/cmake/$LLAMA_CMAKE_VERSION/bin/ninja"
+# .so deps land in <prefix>/lib; the binary finds them via baked-in RUNPATH
+# (the shell session strips LD_LIBRARY_PATH).
+LLAMA_PREFIX_LIB="/data/data/com.xport.terminal/files/usr/lib"
+# Set to 1 to skip the llama stage entirely (e.g. SSH-only bootstrap).
+BUILD_LLAMA="${BUILD_LLAMA:-1}"
+
+# Debug: Print NDK root path
 echo "DEBUG: ANDROID_NDK_ROOT is set to: $ANDROID_NDK_ROOT"
 
 # Architecture targets - xport focuses only on ARM64
@@ -756,7 +772,7 @@ EOF
     # Disable programs that use xfork() which isn't available in Android NDK
     sed -i 's/CONFIG_NETCAT=y/# CONFIG_NETCAT is not set/' .config
     sed -i 's/CONFIG_NBD_CLIENT=y/# CONFIG_NBD_CLIENT is not set/' .config
-    
+
     # Build with explicit cross-compilation variables
     make -j$(nproc) \
         CC="$CC" \
@@ -773,6 +789,78 @@ EOF
     $STRIP toybox
     
     log_success "Toybox for $arch built successfully"
+}
+
+# Build llama.cpp (llama-cli + llama-bench) for on-device LLM inference.
+# Uses the isolated r27c NDK; arm64 only. Outputs stripped binary + shared
+# libs under "$llama_src/build-android/bin", consumed by create_package.
+build_llama() {
+    local llama_src="$BOOTSTRAP_DIR/llama.cpp"
+    local build="$llama_src/build-android"
+
+    log_info "Building llama.cpp (on-device LLM)..."
+
+    if [ ! -d "$LLAMA_NDK_ROOT" ]; then
+        log_error "llama NDK not found at: $LLAMA_NDK_ROOT"
+        log_error "Install with: sdkmanager \"ndk;$LLAMA_NDK_VERSION\" \"cmake;$LLAMA_CMAKE_VERSION\""
+        exit 1
+    fi
+    if [ ! -x "$LLAMA_CMAKE" ]; then
+        log_error "SDK cmake not found at: $LLAMA_CMAKE"
+        log_error "Install with: sdkmanager \"cmake;$LLAMA_CMAKE_VERSION\""
+        exit 1
+    fi
+
+    # Clone (shallow) and pin. Re-pin if an existing checkout is at the wrong
+    # commit so the build stays reproducible.
+    if [ ! -d "$llama_src/.git" ]; then
+        log_info "Cloning llama.cpp at $LLAMA_COMMIT..."
+        rm -rf "$llama_src"
+        mkdir -p "$llama_src"
+        ( cd "$llama_src" && git init -q && \
+          git remote add origin https://github.com/ggml-org/llama.cpp.git && \
+          git fetch -q --depth 1 origin "$LLAMA_COMMIT" && \
+          git checkout -q FETCH_HEAD )
+    elif [ "$(cd "$llama_src" && git rev-parse HEAD)" != "$LLAMA_COMMIT" ]; then
+        log_info "Re-pinning llama.cpp to $LLAMA_COMMIT..."
+        ( cd "$llama_src" && git fetch -q --depth 1 origin "$LLAMA_COMMIT" && \
+          git checkout -q FETCH_HEAD )
+    else
+        log_info "llama.cpp already pinned at $LLAMA_COMMIT"
+    fi
+
+    # Configure. The interactive REPL (llama-cli) sits on server-context, so
+    # LLAMA_BUILD_SERVER must be ON (we don't ship the server binary). RUNPATH
+    # points the binary at <prefix>/lib so it resolves its .so deps with no
+    # LD_LIBRARY_PATH. armv8.2a+dotprod+fp16 matches the target SoCs; llama.cpp
+    # still does runtime CPU detection so older chips aren't locked out.
+    local march="-march=armv8.2a+dotprod+fp16"
+    "$LLAMA_CMAKE" -S "$llama_src" -B "$build" -G Ninja \
+        -DCMAKE_MAKE_PROGRAM="$LLAMA_NINJA" \
+        -DCMAKE_TOOLCHAIN_FILE="$LLAMA_NDK_ROOT/build/cmake/android.toolchain.cmake" \
+        -DANDROID_ABI=arm64-v8a \
+        -DANDROID_PLATFORM=android-28 \
+        -DCMAKE_C_FLAGS="$march" \
+        -DCMAKE_CXX_FLAGS="$march" \
+        -DGGML_OPENMP=OFF \
+        -DGGML_LLAMAFILE=OFF \
+        -DLLAMA_CURL=OFF \
+        -DLLAMA_BUILD_TESTS=OFF \
+        -DLLAMA_BUILD_EXAMPLES=OFF \
+        -DLLAMA_BUILD_SERVER=ON \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_EXE_LINKER_FLAGS="-Wl,-rpath,$LLAMA_PREFIX_LIB" \
+        -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-rpath,$LLAMA_PREFIX_LIB"
+
+    "$LLAMA_CMAKE" --build "$build" --target llama-cli llama-bench -j"$(nproc)"
+
+    # Strip everything we ship (153MB -> ~12MB).
+    local strip="$LLAMA_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
+    "$strip" --strip-unneeded \
+        "$build/bin/llama-cli" "$build/bin/llama-bench" \
+        "$build/bin/"*.so
+
+    log_success "llama.cpp built successfully"
 }
 
 
@@ -838,8 +926,25 @@ create_package() {
     else
         log_warning "NDK build output directory not found - custom commands may not be available"
     fi
-    
-    
+
+    # Copy llama.cpp (on-device LLM): binaries into bin/, shared libs into lib/.
+    # The binaries find lib/ via baked-in RUNPATH; lib/ files need no exec bit.
+    local llama_bin="$BOOTSTRAP_DIR/llama.cpp/build-android/bin"
+    if [ "$BUILD_LLAMA" = "1" ] && [ -f "$llama_bin/llama-cli" ]; then
+        log_info "Copying llama.cpp binaries and libraries..."
+        cp "$llama_bin/llama-cli" "$llama_bin/llama-bench" "$pkg_dir/bin/"
+        mkdir -p "$pkg_dir/lib"
+        for so in libllama-cli-impl libllama-bench-impl libmtmd \
+                  libllama-common libllama libggml libggml-cpu libggml-base; do
+            cp "$llama_bin/$so.so" "$pkg_dir/lib/"
+        done
+        # The `llm` wrapper (Ollama-like pull/run) is a plain shell script.
+        cp "$SCRIPT_DIR/llm" "$pkg_dir/bin/llm"
+    elif [ "$BUILD_LLAMA" = "1" ]; then
+        log_warning "llama.cpp binaries not found - run build_llama first"
+    fi
+
+
     # Ensure all binaries have execute permissions
     chmod +x "$pkg_dir/bin/"*
     
@@ -868,10 +973,16 @@ create_package() {
 # Build all packages
 build_all() {
     log_info "Building minimal bootstrap for all architectures..."
-    
+
+    # llama.cpp is arch-independent here (arm64 only) and uses its own NDK, so
+    # build it once up front, independent of the r22b dropbear/toybox stages.
+    if [ "$BUILD_LLAMA" = "1" ]; then
+        build_llama
+    fi
+
     for arch in "${ARCHITECTURES[@]}"; do
         log_info "Building for $arch..."
-        
+
         # Build OpenSSL, Dropbear, and Toybox
         build_openssl "$arch"
         build_dropbear "$arch"

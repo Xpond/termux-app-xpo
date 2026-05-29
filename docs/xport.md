@@ -91,6 +91,62 @@ dropbearconvert ...                             # key format conversion
 
 Password/interactive auth is disabled; key-based only (RSA/ECDSA/Ed25519).
 
+## On-device LLM (`llm`)
+
+Run small GGUF models locally via `llama.cpp` (CPU-only). Models are
+user-supplied — never bundled in the APK.
+
+```
+llm pull qwen2.5:1.5b     # download a model (Ollama-like name)
+llm pull <url>            # or any direct GGUF URL
+llm list                  # list downloaded models (* = default)
+llm run qwen2.5:1.5b      # chat (sets it as default)
+llm                       # chat with the default/last model
+llm rm <name>             # delete a model
+llm names                 # list known names
+```
+
+Models live in `~/models`. Known names map to HuggingFace Q4_K_M GGUFs (edit the
+`url_for` table in `scripts/llm` to add more). In the chat REPL: `/exit` or
+Ctrl+C to quit, `/regen`, `/clear`.
+
+> **Keep XPort in the foreground while `llm pull` downloads.** The download runs
+> in the app (see below), driven by a `FileObserver` in `TermuxActivity`. If you
+> switch away and Android backgrounds/kills the activity, the download can stall
+> or stop. For multi-GB models, leave XPort open until it prints `Done:`. A
+> partial download is left as `<model>.part` and is not used; just re-run `llm
+> pull` to fetch again.
+
+**Expectations.** ~10–20 t/s for 1–3B Q4 on a flagship; sub-1B is faster, ~4B
+slower. Size is RAM-bound: Q4_K_M ≈ 0.5 GB (sub-1B) … 3 GB (3B) … 5 GB
+(`gemma4:e4b`). Pick a model that fits your device's free RAM. After ~60–90s of
+continuous generation the SoC throttles — short turns are fine, long monologues
+degrade. Default flags: `-t 4` (big cores), `-c 2048`.
+
+`gemma4:e4b` (Gemma 4 E4B, Apr 2026) is a strong ~4B with native thinking and
+long context — good on ≥8 GB devices; supported by the pinned llama.cpp.
+
+### How it's built (`scripts/build-minimal-bootstrap.sh`, `build_llama`)
+
+A **second, isolated NDK (r27c)** + the SDK's cmake/ninja compile `llama-cli`
+(and `llama-bench`), pinned to a fixed llama.cpp commit. This never touches the
+r22b chain that builds dropbear/toybox, so their reproducibility is untouched.
+`llama-cli` is a shared-lib build: stripped, the binary + 8 `.so`s total ~12 MB,
+shipped as `bin/{llama-cli,llama-bench}` + `lib/*.so`. The binary finds its libs
+via a baked-in RUNPATH (`<prefix>/lib`) — no `LD_LIBRARY_PATH` needed (the shell
+session strips it). `llm` is a plain shell script in `bin/`.
+
+### Why `llm pull` downloads via the app (DNS)
+
+The terminal's forked shell child has **no DNS resolver**: Android resolves via
+the process's bound network, and `bindProcessToNetwork()` doesn't survive
+`fork()` (the native `android_setprocnetwork` hits `EPERM` in the bare child).
+The app process *can* resolve, so `llm pull` hands the download to it — the same
+file-trigger pattern as the font commands. `llm` writes `~/.llm_download` (url +
+dest), `LlmDownloader` (a `FileObserver` in `TermuxActivity`) fetches it with
+`HttpURLConnection` and writes progress to `~/.llm_download_status`, which `llm`
+polls.
+
 ## History / reproducibility notes
 
 Repo re-cloned May 2026; the whole **sysmon** feature was missing from git and

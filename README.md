@@ -39,9 +39,25 @@ Authentication is key-based (RSA / ECDSA / Ed25519); password auth is disabled.
 | `font <variant>` | switch terminal font (GeistMono regular/bold/italic, Inter-thin) |
 | `fontsize <1-10>` | adjust font size |
 | `textcolor` / `backgroundcolor` | set terminal colors / theme |
+| `llm pull/run/list <name>` | run small local LLMs (GGUF via llama.cpp) |
 
 These talk to the app via a file-trigger mechanism: the command writes a small
 state file the app watches and applies live.
+
+## On-device LLM
+
+Run small GGUF models locally, offline, CPU-only:
+
+```sh
+llm pull qwen2.5:1.5b    # download by name (or a direct GGUF URL)
+llm run qwen2.5:1.5b     # chat
+llm list                 # downloaded models
+```
+
+Models live in `~/models` and are user-supplied (never bundled). Stay ≤3B Q4;
+expect ~10–20 t/s on a flagship. Keep XPort in the foreground while `llm pull`
+runs — the download happens in the app and can stall if backgrounded. Details in
+[`docs/xport.md`](docs/xport.md).
 
 ## Building
 

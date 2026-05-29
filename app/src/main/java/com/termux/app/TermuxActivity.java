@@ -172,6 +172,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
      */
     private boolean mIsInvalidState;
 
+    /** Handles `llm pull` model downloads (the forked shell child has no DNS resolver). */
+    private com.xport.terminal.LlmDownloader mLlmDownloader;
+
     private int mNavBarHeight;
 
     private float mTerminalToolbarDefaultHeight;
@@ -204,6 +207,11 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         ReportActivity.deleteReportInfoFilesOlderThanXDays(this, 14, false);
 
         super.onCreate(savedInstanceState);
+
+        // The forked shell child can't resolve DNS, so `llm pull` downloads are
+        // handled here in the app process (which can). Watches a trigger file.
+        mLlmDownloader = new com.xport.terminal.LlmDownloader();
+        mLlmDownloader.start();
 
         // Load Termux app SharedProperties from disk
         mProperties = TermuxAppSharedProperties.getProperties();
@@ -376,6 +384,11 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             unbindService(this);
         } catch (Exception e) {
             // ignore.
+        }
+
+        if (mLlmDownloader != null) {
+            mLlmDownloader.stop();
+            mLlmDownloader = null;
         }
     }
 

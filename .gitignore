@@ -54,3 +54,4 @@ logs/
 misc/
 .rb/
 .claude/
+.playwright-mcp/
