@@ -95,13 +95,17 @@ public class LlmServerService extends Service {
     private boolean startServer(String model, String port, String token) {
         stopServer();
         try {
-            // Match the `llm` CLI flags exactly (-t 4 -c 2048) for the same
-            // single-stream throughput. No --parallel: it splits the context
-            // into slots and roughly halves single-request t/s on a phone,
-            // which is all we serve (one generation at a time).
+            // Run llama-server in router mode (--models-dir, no -m) so every
+            // .gguf in ~/models shows up in the WebUI/API model picker and can be
+            // switched live. The router loads a model on first use and keeps only
+            // --models-max in RAM (1 = same footprint as the old single-model
+            // mode: switching swaps the resident model). Our -c/-t flags are
+            // merged into each child instance the router spawns.
+            String modelsDir = new File(model).getParent();
             ProcessBuilder pb = new ProcessBuilder(
                 PREFIX + "/bin/llama-server",
-                "-m", model,
+                "--models-dir", modelsDir,
+                "--models-max", "1",
                 "--host", "127.0.0.1",
                 "--port", port,
                 "--api-key", token,
