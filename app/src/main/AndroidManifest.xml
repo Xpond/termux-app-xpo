@@ -129,6 +129,26 @@
             android:name="com.xport.terminal.LlmServerService"
             android:exported="false" />
 
+        <!-- Read-aloud: synthesizes + plays the screen text via KittenTTS.
+             Foreground service so playback survives backgrounding. -->
+        <service
+            android:name="com.xport.terminal.TtsPlayerService"
+            android:exported="false" />
+
+        <!-- Reads the on-screen text for read-aloud. User enables it once in
+             Settings > Accessibility > xport. -->
+        <service
+            android:name="com.xport.terminal.TtsAccessibilityService"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/tts_accessibility_config" />
+        </service>
+
 
 
         <!-- This (or rather, value 2.1 or higher) is needed to make the Samsung Galaxy S8 mark the

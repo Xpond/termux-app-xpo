@@ -173,23 +173,35 @@ static int extract_voice(const char *npz, const char *voice, const char *out) {
     return 1;
 }
 
-int main(int argc, char **argv) {
-    if (argc == 5 && strcmp(argv[1], "--extract-voice") == 0)
-        return extract_voice(argv[2], argv[3], argv[4]);  // npz voice out.bin
-    if (argc != 7) {
-        fprintf(stderr, "usage: %s <data_path> <onnx> <voice.bin> <espeak_voice> <text> <out.wav>\n", argv[0]);
-        fprintf(stderr, "   or: %s --extract-voice <voices.npz> <voice> <out.bin>\n", argv[0]);
-        return 1;
-    }
-    const char *data_path=argv[1], *onnx=argv[2], *vbin=argv[3],
-               *evoice=argv[4], *text=argv[5], *out=argv[6];
+// One-time heavy setup, shared by one-shot and serve modes: init espeak, load
+// the voice matrix, and create the ONNX session (the 78MB model load). After
+// this, synth() is cheap — that's what kills the per-sentence silence in serve.
+static OrtSession *g_sess = NULL;
+static OrtMemoryInfo *g_mem = NULL;
+static float g_voices[400 * 256];
 
-    // 1. espeak: text -> IPA (loop over clauses)
+static void setup(const char *data_path, const char *onnx, const char *vbin, const char *evoice) {
     if (espeak_Initialize(AUDIO_OUTPUT_SYNCHRONOUS, 0, data_path,
             espeakINITIALIZE_PHONEME_IPA | espeakINITIALIZE_DONT_EXIT) == EE_INTERNAL_ERROR) {
-        fprintf(stderr, "espeak_Initialize failed (data at %s?)\n", data_path); return 1; }
+        fprintf(stderr, "espeak_Initialize failed (data at %s?)\n", data_path); exit(1); }
     if (espeak_SetVoiceByName(evoice) != EE_OK) {
-        fprintf(stderr, "espeak voice '%s' not found\n", evoice); return 1; }
+        fprintf(stderr, "espeak voice '%s' not found\n", evoice); exit(1); }
+    FILE *vf = fopen(vbin, "rb");
+    if (!vf || fread(g_voices, 4, 400 * 256, vf) != 400 * 256) {
+        fprintf(stderr, "bad voice file (need 400x256 float32)\n"); exit(1); }
+    fclose(vf);
+    g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+    OrtEnv *env; check(g_ort->CreateEnv(ORT_LOGGING_LEVEL_WARNING,"tts",&env),"env");
+    OrtSessionOptions *o; check(g_ort->CreateSessionOptions(&o),"opt");
+    (void)g_ort->SetIntraOpNumThreads(o,4);
+    check(g_ort->CreateSession(env,onnx,o,&g_sess),"session");
+    check(g_ort->CreateCpuMemoryInfo(OrtArenaAllocator,OrtMemTypeDefault,&g_mem),"mem");
+}
+
+// Synthesize one text into samples (caller must NOT free; points into ov which
+// we leak per call — fine, ORT's arena reuses it, and serve lifetimes are short).
+// Returns sample count (after tail trim) or 0 on failure.
+static size_t synth(const char *text, float **out) {
     char ipa[8192]; ipa[0] = 0; size_t il = 0;
     const void *tp = text;
     while (tp != NULL) {
@@ -198,48 +210,69 @@ int main(int argc, char **argv) {
         if (tp != NULL && *(const char*)tp != '\0') { if (il+1 < sizeof(ipa)) { ipa[il++]=' '; ipa[il]=0; } }
         else break;
     }
-    // NB: don't espeak_Terminate() — it destroys an internal mutex that ORT's
-    // static teardown later touches (FORTIFY abort). OS reclaims on exit.
-
-    // 2. tokenize
     int64_t tokens[4096];
     size_t nt = tokenize(ipa, tokens, 4096);
-
-    // 3. load voice matrix (400x256) and pick row = min(char_count, 399).
-    //    char_count = Unicode code points of the input text (Python len()).
-    static float voices[400 * 256];
-    FILE *vf = fopen(vbin, "rb");
-    if (!vf || fread(voices, 4, 400 * 256, vf) != 400 * 256) {
-        fprintf(stderr, "bad voice file (need 400x256 float32)\n"); return 1; }
-    fclose(vf);
     size_t cc = 0; { const char *q = text; while (utf8_next(&q)) cc++; }
     size_t row = cc < 399 ? cc : 399;
-    float *style = voices + row * 256;
+    float *style = g_voices + row * 256;
 
-    // 4. ONNX
-    g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
-    OrtEnv *env; check(g_ort->CreateEnv(ORT_LOGGING_LEVEL_WARNING,"tts",&env),"env");
-    OrtSessionOptions *o; check(g_ort->CreateSessionOptions(&o),"opt");
-    (void)g_ort->SetIntraOpNumThreads(o,4);
-    OrtSession *s; check(g_ort->CreateSession(env,onnx,o,&s),"session");
-    OrtMemoryInfo *m; check(g_ort->CreateCpuMemoryInfo(OrtArenaAllocator,OrtMemTypeDefault,&m),"mem");
     int64_t ids_sh[2]={1,(int64_t)nt}; OrtValue *it;
-    check(g_ort->CreateTensorWithDataAsOrtValue(m,tokens,nt*8,ids_sh,2,ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64,&it),"ids");
+    check(g_ort->CreateTensorWithDataAsOrtValue(g_mem,tokens,nt*8,ids_sh,2,ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64,&it),"ids");
     int64_t st_sh[2]={1,256}; OrtValue *stt;
-    check(g_ort->CreateTensorWithDataAsOrtValue(m,style,256*4,st_sh,2,ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,&stt),"style");
+    check(g_ort->CreateTensorWithDataAsOrtValue(g_mem,style,256*4,st_sh,2,ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,&stt),"style");
     float sp=1.0f; int64_t sp_sh[1]={1}; OrtValue *spt;
-    check(g_ort->CreateTensorWithDataAsOrtValue(m,&sp,4,sp_sh,1,ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,&spt),"speed");
+    check(g_ort->CreateTensorWithDataAsOrtValue(g_mem,&sp,4,sp_sh,1,ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,&spt),"speed");
     const char *in[]={"input_ids","style","speed"}; const OrtValue *iv[]={it,stt,spt};
     const char *on[]={"waveform"}; OrtValue *ov=NULL;
-    check(g_ort->Run(s,NULL,in,iv,3,on,1,&ov),"run");
-    float *wav; check(g_ort->GetTensorMutableData(ov,(void**)&wav),"data");
+    check(g_ort->Run(g_sess,NULL,in,iv,3,on,1,&ov),"run");
+    g_ort->ReleaseValue(it); g_ort->ReleaseValue(stt); g_ort->ReleaseValue(spt);
+    check(g_ort->GetTensorMutableData(ov,(void**)out),"data");
     OrtTensorTypeAndShapeInfo *ti; check(g_ort->GetTensorTypeAndShape(ov,&ti),"shape");
     size_t total; check(g_ort->GetTensorShapeElementCount(ti,&total),"count");
     g_ort->ReleaseTensorTypeAndShapeInfo(ti);
-    if (total <= TRIM_TAIL){fprintf(stderr,"output too short\n");return 1;}
-    size_t nn = total - TRIM_TAIL;
-    write_wav(out, wav, nn, SAMPLE_RATE);
-    fprintf(stderr, "wrote %s (%.2fs)\n", out, (double)nn/SAMPLE_RATE);
+    return total <= TRIM_TAIL ? 0 : total - TRIM_TAIL;
+}
+
+// Serve mode: read one UTF-8 line per request from stdin, write the raw PCM
+// (16-bit LE mono 24kHz) length-prefixed to stdout: <uint32 byte_count><pcm>.
+// A byte_count of 0 signals a synth failure for that line. Model loads once.
+static int serve(void) {
+    char line[8192];
+    while (fgets(line, sizeof(line), stdin)) {
+        size_t L = strlen(line);
+        while (L && (line[L-1]=='\n' || line[L-1]=='\r')) line[--L] = 0;
+        float *wav = NULL; size_t nn = (L == 0) ? 0 : synth(line, &wav);
+        uint32_t bytes = (uint32_t)(nn * 2);
+        fwrite(&bytes, 4, 1, stdout);
+        for (size_t i = 0; i < nn; i++) {
+            float v = wav[i]; if (v>1) v=1; else if (v<-1) v=-1;
+            int16_t x = (int16_t)(v*32767.0f); fwrite(&x, 2, 1, stdout);
+        }
+        fflush(stdout);
+    }
+    return 0;
+}
+
+int main(int argc, char **argv) {
+    if (argc == 5 && strcmp(argv[1], "--extract-voice") == 0)
+        return extract_voice(argv[2], argv[3], argv[4]);  // npz voice out.bin
+    // serve: <data_path> <onnx> <voice.bin> <espeak_voice> --serve
+    if (argc == 6 && strcmp(argv[5], "--serve") == 0) {
+        setup(argv[1], argv[2], argv[3], argv[4]);
+        serve();
+        _exit(0);
+    }
+    if (argc != 7) {
+        fprintf(stderr, "usage: %s <data_path> <onnx> <voice.bin> <espeak_voice> <text> <out.wav>\n", argv[0]);
+        fprintf(stderr, "   or: %s <data_path> <onnx> <voice.bin> <espeak_voice> --serve\n", argv[0]);
+        fprintf(stderr, "   or: %s --extract-voice <voices.npz> <voice> <out.bin>\n", argv[0]);
+        return 1;
+    }
+    setup(argv[1], argv[2], argv[3], argv[4]);
+    float *wav = NULL; size_t nn = synth(argv[5], &wav);
+    if (nn == 0) { fprintf(stderr, "output too short\n"); return 1; }
+    write_wav(argv[6], wav, nn, SAMPLE_RATE);
+    fprintf(stderr, "wrote %s (%.2fs)\n", argv[6], (double)nn/SAMPLE_RATE);
     fflush(NULL);
     // _exit: skip atexit/static dtors. espeak-ng + ORT both register teardown
     // that races on espeak's internal mutex (FORTIFY abort). Output is already

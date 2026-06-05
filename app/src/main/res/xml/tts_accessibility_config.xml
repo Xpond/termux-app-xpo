@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Config for TtsAccessibilityService. We read the screen on demand (from the
+     floating button) via getRootInActiveWindow(), so we subscribe to NO event
+     types: an empty accessibilityEventTypes stops Android from computing and
+     delivering an a11y event (and the node tree it implies) on every UI change
+     system-wide — which otherwise lagged the terminal on every keystroke. We
+     still get canRetrieveWindowContent for the on-demand reads. -->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes=""
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:canRetrieveWindowContent="true"
+    android:description="@string/tts_accessibility_description"
+    android:notificationTimeout="1000" />

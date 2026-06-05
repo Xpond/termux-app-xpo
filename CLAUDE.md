@@ -27,5 +27,11 @@ Full architecture: `docs/xport.md`.
   espeak-ng for phonemes. Native `tts-bin` (`scripts/tts-src/`), English only,
   model user-supplied in `~/models/tts` (`tts pull`). Engine built in `build_tts`
   with the same r27c NDK as llama. Details: `docs/tts.md`.
+- **Read-aloud** (speak any app's screen): floating ▶ button → an accessibility
+  service reads the current screen's body text → `TtsPlayerService` (foreground)
+  plays it via `AudioTrack`, feeding sentences to a resident `tts-bin --serve`
+  (model loaded once, gap-free). All in-process, no HTTP/daemon (unlike `llmd` —
+  "speak this" is one-way). Java in `app/.../com/xport/terminal/Tts*.java`.
+  Needs Accessibility + overlay permissions. Details: `docs/ttsoverlay.md`.
 
 ---

@@ -12,6 +12,7 @@
 <resources>
 
     <string name="application_name">&TERMUX_APP_NAME;</string>
+    <string name="tts_accessibility_description">Lets &TERMUX_APP_NAME; read the text on your screen aloud.</string>
     <string name="shared_user_label">&TERMUX_APP_NAME; user</string>
 
 

@@ -178,6 +178,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     /** Bridges the `llmd` wrapper to the local LLM API foreground service. */
     private com.xport.terminal.LlmServerControl mLlmServerControl;
 
+    /** Floating button that triggers read-aloud of the current screen. */
+    private com.xport.terminal.TtsFloatingButton mTtsButton;
+
     private int mNavBarHeight;
 
     private float mTerminalToolbarDefaultHeight;
@@ -221,6 +224,13 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         // activity is foregrounded, which is when the user issues the command.
         mLlmServerControl = new com.xport.terminal.LlmServerControl(this);
         mLlmServerControl.start();
+
+        // Floating read-aloud trigger: tap to read the current screen via the
+        // accessibility service. Created here, but only shown while the a11y
+        // service is connected (it has nothing to read with otherwise) — the
+        // service shows/hides it on connect/disconnect.
+        mTtsButton = new com.xport.terminal.TtsFloatingButton(this);
+        mTtsButton.show();
 
         // Load Termux app SharedProperties from disk
         mProperties = TermuxAppSharedProperties.getProperties();
@@ -406,6 +416,11 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             mLlmServerControl.stop();
             mLlmServerControl = null;
         }
+
+        if (mTtsButton != null) {
+            mTtsButton.hide();
+            mTtsButton = null;
+        }
     }
 
     @Override
@@ -532,6 +547,14 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         // Set termux terminal view
         mTerminalView = findViewById(R.id.terminal_view);
         mTerminalView.setTerminalViewClient(mTermuxTerminalViewClient);
+
+        // Exclude the terminal from the accessibility tree. With our read-aloud
+        // accessibility service enabled, the system otherwise recomputes a11y
+        // nodes for this heavy custom view on every keystroke, lagging input
+        // 2-3s. We never read XPort's own terminal (we read other apps), so it
+        // doesn't need to participate in accessibility at all.
+        mTerminalView.setImportantForAccessibility(
+            android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
 
         if (mTermuxTerminalViewClient != null)
             mTermuxTerminalViewClient.onCreate();

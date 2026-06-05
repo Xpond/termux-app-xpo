@@ -164,6 +164,15 @@ trimmed English data, ~20 MB); `tts pull` fetches the model via the same app-sid
 downloader as `llm pull`. Output is 24 kHz mono WAV — no on-device player, so
 pair it with one.
 
+## Read-aloud (speak any app's screen)
+
+A floating ▶ button reads the current screen of **any** app/webpage aloud through
+`tts`, playing continuously while you switch away. An accessibility service reads
+the screen (no Share sheet, no app cooperation); a foreground service plays it via
+`AudioTrack`, feeding sentences to a resident `tts-bin --serve` so there are no
+gaps. Needs the **Accessibility** + **Display over other apps** permissions. Full
+design in [`docs/ttsoverlay.md`](ttsoverlay.md).
+
 ## History / reproducibility notes
 
 Repo re-cloned May 2026; the whole **sysmon** feature was missing from git and
