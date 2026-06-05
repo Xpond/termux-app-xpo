@@ -829,9 +829,13 @@ build_llama() {
         log_info "llama.cpp already pinned at $LLAMA_COMMIT"
     fi
 
-    # Configure. The interactive REPL (llama-cli) sits on server-context, so
-    # LLAMA_BUILD_SERVER must be ON (we don't ship the server binary). RUNPATH
-    # points the binary at <prefix>/lib so it resolves its .so deps with no
+    # Configure. The interactive REPL (llama-cli) and the HTTP API (llama-server)
+    # both sit on server-context, so LLAMA_BUILD_SERVER must be ON. We now ship
+    # llama-server too (the local OpenAI-compatible API). Its embedded WebUI uses
+    # the prebuilt assets llama.cpp fetches from HF at configure time (default
+    # LLAMA_USE_PREBUILT_UI=ON) — needs network during the build; if it fails the
+    # server still builds with an empty UI, the API is unaffected. RUNPATH points
+    # the binaries at <prefix>/lib so they resolve their .so deps with no
     # LD_LIBRARY_PATH. armv8.2a+dotprod+fp16 matches the target SoCs; llama.cpp
     # still does runtime CPU detection so older chips aren't locked out.
     local march="-march=armv8.2a+dotprod+fp16"
@@ -852,12 +856,12 @@ build_llama() {
         -DCMAKE_EXE_LINKER_FLAGS="-Wl,-rpath,$LLAMA_PREFIX_LIB" \
         -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-rpath,$LLAMA_PREFIX_LIB"
 
-    "$LLAMA_CMAKE" --build "$build" --target llama-cli llama-bench -j"$(nproc)"
+    "$LLAMA_CMAKE" --build "$build" --target llama-cli llama-bench llama-server -j"$(nproc)"
 
     # Strip everything we ship (153MB -> ~12MB).
     local strip="$LLAMA_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
     "$strip" --strip-unneeded \
-        "$build/bin/llama-cli" "$build/bin/llama-bench" \
+        "$build/bin/llama-cli" "$build/bin/llama-bench" "$build/bin/llama-server" \
         "$build/bin/"*.so
 
     log_success "llama.cpp built successfully"
@@ -932,14 +936,18 @@ create_package() {
     local llama_bin="$BOOTSTRAP_DIR/llama.cpp/build-android/bin"
     if [ "$BUILD_LLAMA" = "1" ] && [ -f "$llama_bin/llama-cli" ]; then
         log_info "Copying llama.cpp binaries and libraries..."
-        cp "$llama_bin/llama-cli" "$llama_bin/llama-bench" "$pkg_dir/bin/"
+        cp "$llama_bin/llama-cli" "$llama_bin/llama-bench" \
+           "$llama_bin/llama-server" "$pkg_dir/bin/"
         mkdir -p "$pkg_dir/lib"
-        for so in libllama-cli-impl libllama-bench-impl libmtmd \
+        # libllama-server-impl is the server's only extra shared lib; its
+        # server-context, llama-ui and cpp-httplib deps are STATIC and fold in.
+        for so in libllama-cli-impl libllama-bench-impl libllama-server-impl libmtmd \
                   libllama-common libllama libggml libggml-cpu libggml-base; do
             cp "$llama_bin/$so.so" "$pkg_dir/lib/"
         done
-        # The `llm` wrapper (Ollama-like pull/run) is a plain shell script.
+        # The `llm` (pull/run) and `llmd` (local API server) wrappers are shell.
         cp "$SCRIPT_DIR/llm" "$pkg_dir/bin/llm"
+        cp "$SCRIPT_DIR/llmd" "$pkg_dir/bin/llmd"
     elif [ "$BUILD_LLAMA" = "1" ]; then
         log_warning "llama.cpp binaries not found - run build_llama first"
     fi

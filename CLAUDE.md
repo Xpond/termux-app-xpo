@@ -17,51 +17,11 @@ Full architecture: `docs/xport.md`.
   minimal shell can't reach framework tools.
 - **sysmon is broken** (uses `am broadcast`, unreachable from the shell). Kept
   only for faithful reproduction; rewrite to file-trigger to fix.
+- **On-device LLM** (`llm`): runs GGUF models via a pinned `llama.cpp` (CPU-only,
+  built with an isolated r27c NDK). Models user-supplied in `~/models`.
+- **Local LLM API** (`llmd`): serves a model as an OpenAI-compatible HTTP API on
+  `127.0.0.1` via `llama-server`, kept alive by a foreground service (file-trigger
+  start/stop). Token-gated; holds an invisible overlay for full background speed.
+  Details: `docs/llmd.md`.
 
 ---
-
-# Using `rb` (ResourceBot)
-
-`rb` is your memory of this repo — every Claude Code session, every edit, every
-commit, queryable from the shell. Reach for it before you grep, before you read
-a file end to end, before you re-discover anything.
-
-The work moves in one direction, and so do the commands:
-
-**You land in the repo.** `rb map` — what exists, where the work has been
-happening. Then `rb outline <file>` — what's inside a file, without reading it.
-
-**You wonder how it got this way.** `rb log <file>` — its edit history, newest
-first. `rb at <file> <point>` — what it looked like before, or a diff between two
-moments (`point` = edit number, timestamp, or `0` for creation).
-
-**You're hunting something specific.** `rb search <keyword> [path]` — every edit
-that touched it, across the repo or scoped to a path.
-
-**You step back to get your bearings.** `rb recent` — everything that's changed
-lately, grouped by session. `rb sessions` — the index of recent work, newest
-first.
-
-**You want the *why*.** Every edit line is tagged `[s#N]`. Follow it:
-`rb session N` gives the story — what you were trying to do, what got decided,
-what files it touched.
-
-**You connect work to what shipped.** Edits also carry `[c:hash]` when they
-landed in a commit. `rb commits [hash]` resolves a commit back to the sessions
-behind it.
-
-**You're about to change something and want the blast radius.**
-`rb impact <file>` — how it's wired in, what tends to change alongside it, and
-where the wiring and the history disagree.
-
----
-
-That's the whole loop: **map → outline → log → at → search → recent → sessions →
-session → commits → impact.**
-
-Two tags thread it together: `[s#N]` → `rb session N` for the why,
-`[c:hash]` → `rb commits hash` for what shipped. Partial paths resolve. History
-reads newest-first. When in doubt, ask `rb` before you read the source.
-
----
-

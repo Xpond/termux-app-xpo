@@ -123,6 +123,12 @@
             android:name="com.termux.app.TermuxService"
             android:exported="false" />
 
+        <!-- Keeps llama-server (local LLM API) alive while XPort is backgrounded.
+             Target SDK 28: no foregroundServiceType / specialUse needed. -->
+        <service
+            android:name="com.xport.terminal.LlmServerService"
+            android:exported="false" />
+
 
 
         <!-- This (or rather, value 2.1 or higher) is needed to make the Samsung Galaxy S8 mark the

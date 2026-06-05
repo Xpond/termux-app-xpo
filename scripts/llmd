@@ -1,0 +1,141 @@
+#!/system/bin/sh
+# xport local LLM API daemon control. Exposes llama-server as an
+# OpenAI-compatible HTTP API on 127.0.0.1 so other apps on the phone can use it.
+#
+# The server must outlive the terminal, so a foreground service in the app
+# supervises it. We can't reach the app with am/broadcasts (the minimal shell
+# can't), so we use the same file-trigger pattern as the font commands and `llm`:
+#   .llmd_start  request: line1 model path, line2 port, line3 api token
+#   .llmd_stop   request: (empty) tear the server down
+#   .llmd_status the app writes back: RUNNING | STOPPED | ERROR <msg>
+
+HOME_DIR="/data/data/com.xport.terminal/files/home"
+MODELS_DIR="$HOME_DIR/models"
+DEFAULT_FILE="$MODELS_DIR/.default"
+TOKEN_FILE="$HOME_DIR/.llmd_token"
+STATUS="$HOME_DIR/.llmd_status"
+START_REQ="$HOME_DIR/.llmd_start"
+STOP_REQ="$HOME_DIR/.llmd_stop"
+PORT_FILE="$HOME_DIR/.llmd_port"
+DEFAULT_PORT=8080
+
+usage() {
+  echo "xport local LLM API server"
+  echo ""
+  echo "Usage:"
+  echo "  llmd start [name] [port]  Serve a model's OpenAI API on 127.0.0.1"
+  echo "                            (default: ~/models default model, port $DEFAULT_PORT)"
+  echo "  llmd stop                 Stop the server"
+  echo "  llmd status               Check if the server is answering"
+  echo "  llmd token                Print the API token (bake into your apps)"
+  echo ""
+  echo "Apps reach it at  http://127.0.0.1:<port>/v1/chat/completions"
+  echo "with header  Authorization: Bearer <token>.  Browser UI at  http://127.0.0.1:<port>/"
+}
+
+# Resolve a model arg to a file: default file, a known ~/models name, or a path.
+resolve_model() {
+  arg="$1"
+  if [ -z "$arg" ]; then
+    [ -f "$DEFAULT_FILE" ] && cat "$DEFAULT_FILE"
+    return
+  fi
+  [ -f "$arg" ] && { echo "$arg"; return; }
+  f="$MODELS_DIR/$(echo "$arg" | sed 's/:/_/g').gguf"; [ -f "$f" ] && { echo "$f"; return; }
+  f="$MODELS_DIR/$arg.gguf"; [ -f "$f" ] && { echo "$f"; return; }
+  f="$MODELS_DIR/$arg"; [ -f "$f" ] && { echo "$f"; return; }
+  echo ""
+}
+
+ensure_token() {
+  if [ ! -f "$TOKEN_FILE" ]; then
+    # The kernel UUID is always present and needs no applet (toybox here has no
+    # od/hexdump). Strip dashes for a clean 32-char hex token.
+    tok="$(cat /proc/sys/kernel/random/uuid 2>/dev/null | tr -d '\n-')"
+    [ -z "$tok" ] && tok="xport$$$(date +%s 2>/dev/null)"
+    echo "$tok" > "$TOKEN_FILE"
+    chmod 600 "$TOKEN_FILE" 2>/dev/null
+  fi
+  cat "$TOKEN_FILE"
+}
+
+do_start() {
+  model="$(resolve_model "$1")"
+  if [ -z "$model" ] || [ ! -f "$model" ]; then
+    if [ -z "$1" ]; then
+      echo "No default model set. Run 'llm run <name>' once, or 'llmd start <name>'." >&2
+    else
+      echo "Error: model '$1' not found in ~/models. Pull it: llm pull $1" >&2
+    fi
+    return 1
+  fi
+  port="${2:-$DEFAULT_PORT}"
+  token="$(ensure_token)"
+  echo "$port" > "$PORT_FILE"
+  echo "Starting LLM API server"
+  echo "  model: $model"
+  echo "  url:   http://127.0.0.1:$port  (token: $token)"
+  rm -f "$STATUS"
+  { echo "$model"; echo "$port"; echo "$token"; } > "$START_REQ"
+  i=0
+  while [ "$i" -lt 60 ]; do
+    if [ -f "$STATUS" ]; then
+      s="$(cat "$STATUS" 2>/dev/null)"
+      case "$s" in
+        RUNNING)       echo "Server is up. First request loads the model (slow)."; return 0 ;;
+        RUNNING_SLOW)  echo "Server is up. First request loads the model (slow)."
+                       warn_overlay; return 0 ;;
+        ERROR*)        echo "Error: ${s#ERROR }" >&2; return 1 ;;
+      esac
+    fi
+    sleep 1; i=$((i+1))
+  done
+  echo "Timed out waiting for the server. Is XPort in the foreground?" >&2
+  return 1
+}
+
+# Android throttles a backgrounded app to little cores (~4x slower inference)
+# unless it has a visible window. The service uses an invisible overlay for that,
+# which needs the "Display over other apps" permission. Warn if it's missing.
+warn_overlay() {
+  echo "" >&2
+  echo "Note: 'Display over other apps' is OFF for XPort." >&2
+  echo "Without it, the LLM runs ~4x slower whenever XPort is in the background." >&2
+  echo "Grant it for full background speed:" >&2
+  echo "  Settings > Apps > xport > Display over other apps > Allow" >&2
+}
+
+do_stop() {
+  rm -f "$STATUS"
+  : > "$STOP_REQ"
+  i=0
+  while [ "$i" -lt 15 ]; do
+    [ -f "$STATUS" ] && [ "$(cat "$STATUS" 2>/dev/null)" = "STOPPED" ] && {
+      echo "Server stopped."; return 0; }
+    sleep 1; i=$((i+1))
+  done
+  echo "Stop signal sent."
+}
+
+do_status() {
+  port="$DEFAULT_PORT"; [ -f "$PORT_FILE" ] && port="$(cat "$PORT_FILE")"
+  s="STOPPED"; [ -f "$STATUS" ] && s="$(cat "$STATUS" 2>/dev/null)"
+  case "$s" in
+    RUNNING|RUNNING_SLOW)
+      echo "Server running on http://127.0.0.1:$port"
+      echo "Open that URL in a browser to test, or POST /v1/chat/completions."
+      [ "$s" = "RUNNING_SLOW" ] && warn_overlay
+      ;;
+    ERROR*) echo "Last start failed: ${s#ERROR }" >&2; return 1 ;;
+    *)      echo "Server is not running. Start it: llmd start"; return 1 ;;
+  esac
+}
+
+case "$1" in
+  start)         do_start "$2" "$3" ;;
+  stop)          do_stop ;;
+  status)        do_status ;;
+  token)         ensure_token ;;
+  -h|--help|help|"") usage ;;
+  *)             echo "Unknown command: $1" >&2; usage; return 1 2>/dev/null || exit 1 ;;
+esac

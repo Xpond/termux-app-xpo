@@ -94,7 +94,8 @@ Password/interactive auth is disabled; key-based only (RSA/ECDSA/Ed25519).
 ## On-device LLM (`llm`)
 
 Run small GGUF models locally via `llama.cpp` (CPU-only). Models are
-user-supplied — never bundled in the APK.
+user-supplied — never bundled in the APK. To expose a model as a local
+OpenAI-compatible HTTP API for other apps, see [`docs/llmd.md`](llmd.md).
 
 ```
 llm pull qwen2.5:1.5b     # download a model (Ollama-like name)

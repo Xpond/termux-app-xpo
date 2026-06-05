@@ -175,6 +175,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     /** Handles `llm pull` model downloads (the forked shell child has no DNS resolver). */
     private com.xport.terminal.LlmDownloader mLlmDownloader;
 
+    /** Bridges the `llmd` wrapper to the local LLM API foreground service. */
+    private com.xport.terminal.LlmServerControl mLlmServerControl;
+
     private int mNavBarHeight;
 
     private float mTerminalToolbarDefaultHeight;
@@ -212,6 +215,12 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         // handled here in the app process (which can). Watches a trigger file.
         mLlmDownloader = new com.xport.terminal.LlmDownloader();
         mLlmDownloader.start();
+
+        // `llmd start/stop` controls the local LLM API foreground service via
+        // trigger files (same pattern); startForegroundService runs while the
+        // activity is foregrounded, which is when the user issues the command.
+        mLlmServerControl = new com.xport.terminal.LlmServerControl(this);
+        mLlmServerControl.start();
 
         // Load Termux app SharedProperties from disk
         mProperties = TermuxAppSharedProperties.getProperties();
@@ -389,6 +398,13 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         if (mLlmDownloader != null) {
             mLlmDownloader.stop();
             mLlmDownloader = null;
+        }
+
+        // Only stop watching for triggers; the service keeps running so the API
+        // survives the activity being destroyed/backgrounded (the whole point).
+        if (mLlmServerControl != null) {
+            mLlmServerControl.stop();
+            mLlmServerControl = null;
         }
     }
 

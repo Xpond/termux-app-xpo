@@ -43,10 +43,11 @@ bootstrap/
 bin/
 logs/
 
-# Documentation (except README.md)
+# Documentation (except README.md and docs/)
 
 *.md
 !README.md
+!docs/*.md
 
 # Build logs
 *.log
