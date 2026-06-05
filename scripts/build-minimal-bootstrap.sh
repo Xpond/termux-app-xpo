@@ -53,6 +53,15 @@ LLAMA_PREFIX_LIB="/data/data/com.xport.terminal/files/usr/lib"
 # Set to 1 to skip the llama stage entirely (e.g. SSH-only bootstrap).
 BUILD_LLAMA="${BUILD_LLAMA:-1}"
 
+# On-device TTS (KittenTTS + espeak-ng). Reuses the llama r27c NDK/cmake above.
+# Ships the engine only (tts-bin + libonnxruntime + libespeak-ng + English
+# espeak data); the ~78MB model is user-supplied in ~/models/tts via `tts pull`.
+TTS_ESPEAK_TAG="1.52.0"   # MUST match the host espeak-ng for identical phonemes
+TTS_ORT_VERSION="1.22.0"  # prebuilt onnxruntime-android AAR (full op support)
+TTS_ORT_AAR_URL="https://repo1.maven.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/$TTS_ORT_VERSION/onnxruntime-android-$TTS_ORT_VERSION.aar"
+# Set to 0 to skip the TTS stage.
+BUILD_TTS="${BUILD_TTS:-1}"
+
 # Debug: Print NDK root path
 echo "DEBUG: ANDROID_NDK_ROOT is set to: $ANDROID_NDK_ROOT"
 
@@ -868,6 +877,85 @@ build_llama() {
 }
 
 
+# Build on-device TTS: espeak-ng (.so) + the tts-bin C harness, and assemble a
+# trimmed English espeak-ng-data dir. Reuses the llama r27c NDK + cmake. The
+# KittenTTS model itself is NOT built or shipped — `tts pull` downloads it.
+build_tts() {
+    local work="$BOOTSTRAP_DIR/tts"
+    local espeak_src="$work/espeak-ng"
+    local espeak_build="$espeak_src/build-android"
+    local ort_dir="$work/ort"
+    local cc="$LLAMA_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android28-clang"
+    local strip="$LLAMA_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
+    mkdir -p "$work"
+
+    log_info "Building on-device TTS (KittenTTS + espeak-ng)..."
+
+    # 1. ONNX Runtime: fetch the prebuilt Android AAR, extract arm64 .so + headers.
+    if [ ! -f "$ort_dir/jni/arm64-v8a/libonnxruntime.so" ]; then
+        log_info "Fetching ONNX Runtime $TTS_ORT_VERSION (Android AAR)..."
+        mkdir -p "$ort_dir"
+        curl -sL -o "$ort_dir/ort.aar" "$TTS_ORT_AAR_URL"
+        ( cd "$ort_dir" && unzip -o -q ort.aar "headers/*" "jni/arm64-v8a/libonnxruntime.so" )
+    fi
+
+    # 2. espeak-ng: clone at the tag matching the host (byte-identical phonemes),
+    #    cross-compile a minimal shared lib (all synth/audio backends OFF — we
+    #    only call espeak_TextToPhonemes). We build just the `espeak-ng` lib
+    #    target: the full build would try to RUN the arm64 binary on the host to
+    #    compile data files, which can't execute. We ship the host's prebuilt
+    #    data instead (step 4), so the lib alone is all we need.
+    if [ ! -d "$espeak_src/.git" ]; then
+        log_info "Cloning espeak-ng $TTS_ESPEAK_TAG..."
+        rm -rf "$espeak_src"
+        git clone -q --depth 1 --branch "$TTS_ESPEAK_TAG" \
+            https://github.com/espeak-ng/espeak-ng.git "$espeak_src"
+    fi
+    if [ ! -f "$espeak_build/src/libespeak-ng/libespeak-ng.so" ]; then
+        "$LLAMA_CMAKE" -S "$espeak_src" -B "$espeak_build" -G Ninja \
+            -DCMAKE_MAKE_PROGRAM="$LLAMA_NINJA" \
+            -DCMAKE_TOOLCHAIN_FILE="$LLAMA_NDK_ROOT/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-28 \
+            -DBUILD_SHARED_LIBS=ON \
+            -DUSE_ASYNC=OFF -DUSE_LIBPCAUDIO=OFF -DUSE_MBROLA=OFF \
+            -DUSE_LIBSONIC=OFF -DUSE_SPEECHPLAYER=OFF -DUSE_KLATT=OFF \
+            -DCMAKE_BUILD_TYPE=Release
+        # Build just the lib target; the full build chokes running arm64 on host.
+        "$LLAMA_CMAKE" --build "$espeak_build" --target espeak-ng -j"$(nproc)" || true
+        if [ ! -f "$espeak_build/src/libespeak-ng/libespeak-ng.so" ]; then
+            log_error "espeak-ng .so not produced"; exit 1
+        fi
+    fi
+
+    # 3. Compile tts-bin (text -> espeak IPA -> tokens -> ONNX -> WAV).
+    log_info "Compiling tts-bin..."
+    "$cc" -O2 -fPIE -pie \
+        -I "$espeak_src/src/include/espeak-ng" -I "$ort_dir/headers" \
+        "$SCRIPT_DIR/tts-src/tts.c" \
+        -L "$espeak_build/src/libespeak-ng" -lespeak-ng \
+        -L "$ort_dir/jni/arm64-v8a" -lonnxruntime \
+        -Wl,-rpath,"$LLAMA_PREFIX_LIB" \
+        -o "$work/tts-bin"
+    "$strip" --strip-unneeded "$work/tts-bin"
+
+    # 4. Trim espeak-ng-data to the English-essential set (~850KB vs 19MB). The
+    #    phondata/phonindex/phontab/intonations are global compiled tables (can't
+    #    be split per-language); en_dict + the en/en-US lang config complete it.
+    local host_data="${ESPEAK_NG_DATA:-/usr/share/espeak-ng-data}"
+    if [ ! -d "$host_data" ]; then
+        log_error "host espeak-ng-data not found at $host_data (install espeak-ng $TTS_ESPEAK_TAG, or set ESPEAK_NG_DATA)"; exit 1
+    fi
+    local data_out="$work/espeak-ng-data"
+    rm -rf "$data_out"; mkdir -p "$data_out/lang/gmw"
+    cp "$host_data"/phondata "$host_data"/phonindex "$host_data"/phontab \
+       "$host_data"/phondata-manifest "$host_data"/intonations \
+       "$host_data"/en_dict "$data_out/"
+    cp "$host_data"/lang/gmw/en "$host_data"/lang/gmw/en-US "$data_out/lang/gmw/"
+
+    log_success "TTS built successfully"
+}
+
+
 # Create bootstrap package for an architecture
 create_package() {
     local arch=$1
@@ -952,6 +1040,22 @@ create_package() {
         log_warning "llama.cpp binaries not found - run build_llama first"
     fi
 
+    # Copy TTS: tts-bin + its two .so deps into bin/lib, the `tts` wrapper, and
+    # the trimmed English espeak-ng-data into share/. tts-bin finds its .so deps
+    # via RUNPATH (same as llama); the model is fetched on-device by `tts pull`.
+    local tts_work="$BOOTSTRAP_DIR/tts"
+    if [ "$BUILD_TTS" = "1" ] && [ -f "$tts_work/tts-bin" ]; then
+        log_info "Copying TTS engine..."
+        cp "$tts_work/tts-bin" "$pkg_dir/bin/"
+        cp "$SCRIPT_DIR/tts" "$pkg_dir/bin/tts"
+        mkdir -p "$pkg_dir/lib" "$pkg_dir/share"
+        cp "$tts_work/ort/jni/arm64-v8a/libonnxruntime.so" "$pkg_dir/lib/"
+        cp "$tts_work/espeak-ng/build-android/src/libespeak-ng/libespeak-ng.so" "$pkg_dir/lib/"
+        cp -r "$tts_work/espeak-ng-data" "$pkg_dir/share/"
+    elif [ "$BUILD_TTS" = "1" ]; then
+        log_warning "tts-bin not found - run build_tts first"
+    fi
+
 
     # Ensure all binaries have execute permissions
     chmod +x "$pkg_dir/bin/"*
@@ -986,6 +1090,11 @@ build_all() {
     # build it once up front, independent of the r22b dropbear/toybox stages.
     if [ "$BUILD_LLAMA" = "1" ]; then
         build_llama
+    fi
+
+    # TTS also uses the r27c NDK and is arch-independent; build it once up front.
+    if [ "$BUILD_TTS" = "1" ]; then
+        build_tts
     fi
 
     for arch in "${ARCHITECTURES[@]}"; do

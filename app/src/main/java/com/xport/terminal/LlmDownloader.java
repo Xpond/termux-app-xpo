@@ -1,6 +1,5 @@
 package com.xport.terminal;
 
-import android.os.FileObserver;
 import android.util.Log;
 
 import java.io.File;
@@ -8,14 +7,15 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Downloads GGUF models on behalf of the `llm` shell wrapper.
+ * Downloads files on behalf of the `llm` and `tts` shell wrappers.
  *
  * The terminal's forked shell child has no DNS resolver (Android resolves via
  * the process's bound network, which doesn't survive fork()), so wget can't
- * fetch by hostname. The app process CAN resolve, so `llm pull` hands the job
- * here via a trigger file and we download with HttpURLConnection.
+ * fetch by hostname. The app process CAN resolve, so `llm pull` / `tts pull`
+ * hand the job here via a trigger file and we download with HttpURLConnection.
  *
  * Protocol (files under ~):
  *   .llm_download         request: line 1 = url, line 2 = destPath
@@ -27,29 +27,34 @@ public class LlmDownloader {
     private static final String REQUEST = HOME + "/.llm_download";
     private static final String STATUS = HOME + "/.llm_download_status";
 
-    private FileObserver mObserver;
+    private volatile boolean mRunning;
+    private final AtomicBoolean mBusy = new AtomicBoolean(false);
 
     /** Start watching for download requests. Call once from the activity. */
     public void start() {
-        // CLOSE_WRITE fires after `llm` finishes writing the request file
-        // (CREATE would fire on the empty file before the content is written).
-        mObserver = new FileObserver(HOME, FileObserver.CLOSE_WRITE) {
-            @Override public void onEvent(int event, String path) {
-                if (".llm_download".equals(path)) handleRequest();
+        // Poll for the request file once a second rather than using a
+        // FileObserver: CLOSE_WRITE is unreliable for back-to-back requests to
+        // the same path (it can miss the 2nd of two downloads) and for the
+        // inode recreated after a data wipe. A 1Hz poll is bulletproof and more
+        // than fast enough for a download trigger.
+        mRunning = true;
+        new Thread(() -> {
+            while (mRunning) {
+                handleRequest();
+                try { Thread.sleep(1000); } catch (InterruptedException e) { return; }
             }
-        };
-        mObserver.startWatching();
-        // Handle a request that may already be waiting from before we started.
-        if (new File(REQUEST).exists()) handleRequest();
+        }, "LlmDownloader-poll").start();
     }
 
     public void stop() {
-        if (mObserver != null) { mObserver.stopWatching(); mObserver = null; }
+        mRunning = false;
     }
 
     private void handleRequest() {
         final File req = new File(REQUEST);
         if (!req.exists()) return;
+        // One download at a time; ignore new requests while one is in flight.
+        if (!mBusy.compareAndSet(false, true)) return;
         new Thread(() -> {
             try {
                 String[] lines = readLines(req);
@@ -63,6 +68,8 @@ public class LlmDownloader {
             } catch (Exception e) {
                 Log.e("LlmDownloader", "handleRequest failed", e);
                 writeStatus("ERROR " + e.getMessage());
+            } finally {
+                mBusy.set(false);
             }
         }).start();
     }

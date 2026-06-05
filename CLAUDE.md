@@ -23,5 +23,9 @@ Full architecture: `docs/xport.md`.
   `127.0.0.1` via `llama-server`, kept alive by a foreground service (file-trigger
   start/stop). Token-gated; holds an invisible overlay for full background speed.
   Details: `docs/llmd.md`.
+- **On-device TTS** (`tts`): text→WAV via KittenTTS (mini-0.8, ONNX Runtime) +
+  espeak-ng for phonemes. Native `tts-bin` (`scripts/tts-src/`), English only,
+  model user-supplied in `~/models/tts` (`tts pull`). Engine built in `build_tts`
+  with the same r27c NDK as llama. Details: `docs/tts.md`.
 
 ---

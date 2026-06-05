@@ -1,0 +1,83 @@
+#!/system/bin/sh
+# xport on-device TTS — text to speech via KittenTTS (mini-0.8) + espeak-ng.
+# No daemon: pull downloads the model, then `tts "text" out.wav` makes a WAV.
+# Model lives in ~/models/tts (user-supplied, like the llm GGUFs).
+
+PREFIX="/data/data/com.xport.terminal/files/usr"
+HOME_DIR="/data/data/com.xport.terminal/files/home"
+TTS_DIR="$HOME_DIR/models/tts"
+MODEL="$TTS_DIR/kitten_mini.onnx"
+VOICES="$TTS_DIR/voices.bin"          # full 400x256 float32 matrix for the voice
+DATA="$PREFIX/share"                   # holds espeak-ng-data/
+ESPEAK_VOICE="en-us"
+KVOICE="expr-voice-3-m"                # Bruno (default)
+
+MODEL_URL="https://huggingface.co/KittenML/kitten-tts-mini-0.8/resolve/main/kitten_tts_mini_v0_8.onnx"
+VOICES_URL="https://huggingface.co/KittenML/kitten-tts-mini-0.8/resolve/main/voices.npz"
+
+usage() {
+  echo "xport TTS (KittenTTS mini-0.8)"
+  echo ""
+  echo "Usage:"
+  echo "  tts \"text\" [out.wav]   Synthesize speech to a WAV (default out.wav)"
+  echo "  tts pull               Download the model into ~/models/tts"
+  echo ""
+  echo "English voice (Bruno). Writes a 24kHz mono WAV; play it with any player."
+}
+
+# Reuse the llm download trigger (the app resolves DNS for us). $1=url $2=dest
+download() {
+  url="$1"; out="$2"
+  [ -f "$out" ] && { echo "Already have $(basename "$out")"; return 0; }
+  echo "Downloading $(basename "$out")"
+  STATUS="$HOME_DIR/.llm_download_status"
+  REQ="$HOME_DIR/.llm_download"
+  rm -f "$STATUS" "$REQ"
+  last=""
+  { echo "$url"; echo "$out"; } > "$REQ"
+  while true; do
+    [ -f "$STATUS" ] || { sleep 1; continue; }
+    s=$(cat "$STATUS" 2>/dev/null)
+    case "$s" in
+      DONE)         echo "  done"; rm -f "$STATUS"; return 0 ;;
+      ERROR*)       echo "  error: ${s#ERROR }" >&2; rm -f "$STATUS" "$out"; return 1 ;;
+      DOWNLOADING*) [ "$s" != "$last" ] && { echo "  ${s#DOWNLOADING }%"; last="$s"; } ;;
+    esac
+    sleep 1
+  done
+}
+
+do_pull() {
+  mkdir -p "$TTS_DIR"
+  download "$MODEL_URL" "$MODEL" || return 1
+  # voices.npz is a zip of .npy arrays; the app can't unpack it, so we fetch it
+  # and let tts-bin read the chosen voice. We store the raw .npz and extract the
+  # voice matrix on first use (see ensure_voice).
+  download "$VOICES_URL" "$TTS_DIR/voices.npz" || return 1
+  ensure_voice || return 1
+  echo "Ready. Try: tts \"hello from xport\" hello.wav"
+}
+
+# One-time: extract the default voice's 400x256 float32 matrix from voices.npz
+# into a flat .bin (tts-bin parses the npz; the shell can't unzip .npy).
+ensure_voice() {
+  [ -f "$VOICES" ] && return 0
+  [ -f "$TTS_DIR/voices.npz" ] || { echo "No voices.npz; run: tts pull" >&2; return 1; }
+  "$PREFIX/bin/tts-bin" --extract-voice "$TTS_DIR/voices.npz" "$KVOICE" "$VOICES"
+}
+
+do_say() {
+  text="$1"
+  out="${2:-out.wav}"
+  [ -z "$text" ] && { usage; return 1; }
+  [ -f "$MODEL" ] || { echo "No model. Run: tts pull" >&2; return 1; }
+  ensure_voice || return 1
+  exec "$PREFIX/bin/tts-bin" "$DATA" "$MODEL" "$VOICES" "$ESPEAK_VOICE" "$text" "$out"
+}
+
+case "$1" in
+  pull)           do_pull ;;
+  -h|--help|help) usage ;;
+  "")             usage ;;
+  *)              do_say "$1" "$2" ;;
+esac

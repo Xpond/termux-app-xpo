@@ -146,7 +146,23 @@ The app process *can* resolve, so `llm pull` hands the download to it — the sa
 file-trigger pattern as the font commands. `llm` writes `~/.llm_download` (url +
 dest), `LlmDownloader` (a `FileObserver` in `TermuxActivity`) fetches it with
 `HttpURLConnection` and writes progress to `~/.llm_download_status`, which `llm`
-polls.
+polls. `tts pull` reuses the exact same trigger.
+
+## On-device TTS (`tts`)
+
+Text-to-speech to a WAV, fully on-device — KittenTTS (mini-0.8, ONNX) +
+espeak-ng for phonemes. English only; the model is user-supplied in
+`~/models/tts`. Full design in [`docs/tts.md`](tts.md).
+
+```
+tts pull                       # download the model (~81 MB)
+tts "hello from xport" hi.wav  # synthesize -> hi.wav (default out.wav)
+```
+
+The bootstrap ships only the engine (`tts-bin` + ONNX Runtime + espeak-ng +
+trimmed English data, ~20 MB); `tts pull` fetches the model via the same app-side
+downloader as `llm pull`. Output is 24 kHz mono WAV — no on-device player, so
+pair it with one.
 
 ## History / reproducibility notes
 
