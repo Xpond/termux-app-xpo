@@ -14,4 +14,13 @@
         <item name="android:textColor">@color/white</item>
     </style>
 
+    <!-- Invisible window for TtsReadClipboard: it must briefly hold focus to read
+         the clipboard (Android 10+ rule), so it's a real, transparent activity —
+         not Theme.NoDisplay, which crashes on finish() after focus. -->
+    <style name="InvisibleActivity" parent="@android:style/Theme.Translucent.NoTitleBar">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:backgroundDimEnabled">false</item>
+    </style>
+
 </resources>

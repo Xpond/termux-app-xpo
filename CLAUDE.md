@@ -30,7 +30,11 @@ Full architecture: `docs/xport.md`.
 - **Read-aloud** (speak any app's screen): floating ▶ button → an accessibility
   service reads the current screen's body text → `TtsPlayerService` (foreground)
   plays it via `AudioTrack`, feeding sentences to a resident `tts-bin --serve`
-  (model loaded once, gap-free). All in-process, no HTTP/daemon (unlike `llmd` —
+  (model loaded once, gap-free). Two more entry points for selected text (which
+  the screen-walk can't get from browsers): a **"Speak" `PROCESS_TEXT`** menu item
+  (`TtsProcessText`) and **clipboard long-press** (`TtsReadClipboard`, a focus-
+  grabbing transparent activity — Android 10+ blocks background clipboard reads).
+  All call `TtsPlayerService.speak()`. In-process, no HTTP/daemon (unlike `llmd` —
   "speak this" is one-way). Java in `app/.../com/xport/terminal/Tts*.java`.
   Needs Accessibility + overlay permissions. Details: `docs/ttsoverlay.md`.
 

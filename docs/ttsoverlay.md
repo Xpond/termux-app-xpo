@@ -1,10 +1,17 @@
 # Read-aloud — speak any app's screen
 
-Point at any app or webpage and have it read to you. A floating ▶ button reads
-the current screen aloud through the on-device [`tts`](tts.md) engine (KittenTTS),
-playing continuously while you switch to the app you're listening to. No network,
-no Share sheet, no other app's cooperation — an accessibility service reads the
-screen directly.
+Point at any app or webpage and have it read to you, through the on-device
+[`tts`](tts.md) engine (KittenTTS), playing continuously while you switch to the
+app you're listening to. No network, no other app's cooperation. Three ways in:
+
+- **Tap the floating ▶ button** — an accessibility service reads the current
+  screen's body text.
+- **Select text → "Speak"** — a `PROCESS_TEXT` menu item reads exactly the
+  selection. The reliable path for browsers, whose page selection the screen-walk
+  can't see (Chrome renders the page in one virtual view, hidden from the a11y
+  tree).
+- **Copy text → long-press ▶** — reads the clipboard. The fallback for apps whose
+  trimmed selection menu (some OEM skins) won't show "Speak".
 
 ## Usage
 
@@ -13,9 +20,14 @@ screen directly.
 2. A floating **▶** appears (drag to reposition). Open any app/webpage, tap it →
    it reads the visible body text. Tap **■** to stop. It stops on its own at the
    end and the icon resets.
+3. To read a **selection**: highlight text and pick **Speak** from the popup menu
+   (may be under ⋮). If the menu doesn't offer it, **Copy** the text and
+   **long-press** the ▶ button instead — same result. Both drive the same icon
+   state as a tap.
 
 The button shows only while accessibility is enabled, and hides when you turn it
-off. Requires `tts pull` to have fetched the model first.
+off. Selection-read works regardless. Requires `tts pull` to have fetched the
+model first.
 
 ## Architecture
 
@@ -26,20 +38,32 @@ Three pieces, all in-process (`app/src/main/java/com/xport/terminal/`):
   invisible nodes, skips text inside clickable containers (buttons / nav chrome),
   and emits one string per leaf. Hands it to the player; reads on demand only (no
   event subscription — see Performance).
-- **`TtsPlayerService`** — foreground service that owns playback. Splits text into
-  sentences and feeds them to a **resident `tts-bin --serve`** process (model
+- **`TtsPlayerService`** — foreground service that owns playback, and the single
+  entry point: every frontend calls its static `speak(ctx, text)`. Splits text
+  into sentences and feeds them to a **resident `tts-bin --serve`** process (model
   loads once). Two threads decouple synth from playback: a synth thread fills a
   small bounded PCM queue, a player thread drains it to `AudioTrack` back-to-back,
   so there's no gap between sentences (synth is ~10× real-time). Holds the same
   1×1 overlay as [`llmd`](llmd.md) for background speed. When the speaker goes
   idle it fully tears down (kills `tts-bin`, drops the overlay) so nothing
-  lingers.
+  lingers. A `mPending` counter keeps it from mistaking the ~1s model-load gap
+  (queues briefly empty before the first PCM) for "done" and tearing down early.
 - **`TtsFloatingButton`** — the draggable ▶ overlay. The service shows/hides it on
-  connect/disconnect; tapping toggles read/stop.
+  connect/disconnect; **tap** toggles screen-read/stop, **long-press** reads the
+  clipboard (via `TtsReadClipboard`). A round glassy bubble; the glyph shape (▶/■)
+  carries the state.
+- **`TtsProcessText`** — the "Speak" menu item (`PROCESS_TEXT`). Invisible
+  (`Theme.NoDisplay`); the system hands it the selected text, it calls `speak()`
+  and finishes. Works in browsers, where the selection never reaches the a11y tree.
+- **`TtsReadClipboard`** — reads the clipboard (long-press fallback). Android 10+
+  blocks clipboard reads without window focus, so this is a real **transparent**
+  activity (not `Theme.NoDisplay`, which crashes on `finish()` after focus): it
+  reads in `onWindowFocusChanged`, calls `speak()`, finishes. Own `taskAffinity`
+  so it never surfaces XPort's main UI.
 
 No HTTP, no daemon, no token: unlike `llmd`, the consumers are XPort's own
 in-process frontends, so a loopback server would be the wrong primitive. "Speak
-this" is one-way — the screen reader reads, the player plays.
+this" is one-way — a frontend reads text, the player plays.
 
 ## `tts-bin --serve`
 
@@ -65,6 +89,9 @@ one-shot `tts "text" out.wav` path is unchanged.
 ## Limits
 
 - **English only**, inherits from `tts` / KittenTTS.
+- The next two limits are the **screen-walk's** (tap). Selecting text and using
+  **Speak** / clipboard long-press reads exactly what you picked, so they're the
+  escape hatch when the walk misses.
 - **No scrolling.** Reads the text the accessibility tree exposes for the current
   screen (often the whole article) and stops. Apps that lazy-load content only on
   scroll won't have their tail read.

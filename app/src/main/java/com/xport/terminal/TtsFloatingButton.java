@@ -1,14 +1,18 @@
 package com.xport.terminal;
 
 import android.content.Context;
-import android.graphics.Color;
+import android.content.Intent;
 import android.graphics.PixelFormat;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.WindowManager;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -27,6 +31,11 @@ import android.widget.Toast;
 public class TtsFloatingButton {
 
     private static final String PLAY = "▶", STOP = "■";
+    // Glassy dark fill + a single calm accent for the glyph (shape carries the
+    // state, not colour). Diameter is fixed so it reads as a round FAB, not a
+    // padded glyph.
+    private static final int FILL = 0xCC1C1C1E, ACCENT = 0xFF4DD0E1;
+    private static final int SIZE_DP = 44;
 
     private static TtsFloatingButton sInstance;
 
@@ -60,11 +69,17 @@ public class TtsFloatingButton {
 
         mView = new TextView(mContext);
         mView.setText(PLAY);
-        mView.setTextColor(Color.WHITE);
-        mView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
-        mView.setBackgroundColor(0xCC000000);
-        int pad = dp(12);
-        mView.setPadding(pad, pad, pad, pad);
+        mView.setTextColor(ACCENT);
+        mView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
+        mView.setGravity(Gravity.CENTER);
+        // Round glassy bubble: dark translucent fill + a hairline light rim for
+        // depth (the window is sized to the circle, so an elevation shadow would
+        // be clipped — the rim carries the "floating" read instead).
+        GradientDrawable bg = new GradientDrawable();
+        bg.setShape(GradientDrawable.OVAL);
+        bg.setColor(FILL);
+        bg.setStroke(dp(1), 0x33FFFFFF);
+        mView.setBackground(bg);
 
         int type = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
             ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -74,7 +89,7 @@ public class TtsFloatingButton {
         // button (e.g. the keyboard) instead of letting them fall through to the
         // app behind. With it, only touches on the button reach us.
         final WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
+            dp(SIZE_DP), dp(SIZE_DP),
             type,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
           | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
@@ -113,26 +128,49 @@ public class TtsFloatingButton {
         else                 { svc.readScreen(); mView.setText(STOP); }
     }
 
-    /** Distinguishes a tap (toggle) from a drag (reposition). */
+    /** Long-press: read the clipboard. The transparent activity does the actual
+     *  read (it needs focus, which an overlay lacks) — see {@link TtsReadClipboard}.
+     *  This is the fallback for native apps that hide the "Speak" menu item.
+     *
+     *  We arm the service so the icon tracks playback (■ now, ▶ on idle) just like
+     *  a tap. TtsReadClipboard resets the icon itself if the clipboard is empty
+     *  (the player never starts then, so no idle callback fires). */
+    private void onLongPress() {
+        TtsAccessibilityService svc = TtsAccessibilityService.INSTANCE;
+        if (svc != null) { svc.beginRead(); mView.setText(STOP); }
+        mContext.startActivity(new Intent(mContext, TtsReadClipboard.class)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+    }
+
+    /** Distinguishes tap (read screen) from drag (reposition) from long-press
+     *  (read clipboard). A posted runnable fires the long-press if the finger
+     *  neither moves nor lifts within the system timeout. */
     private class DragTapListener implements View.OnTouchListener {
         private final WindowManager.LayoutParams lp;
-        private int startX, startY; private float touchX, touchY; private boolean moved;
+        private final Handler handler = new Handler(Looper.getMainLooper());
+        private int startX, startY; private float touchX, touchY;
+        private boolean moved, longPressed;
+        private final Runnable longPress = () -> { longPressed = true; onLongPress(); };
         DragTapListener(WindowManager.LayoutParams lp) { this.lp = lp; }
 
         @Override public boolean onTouch(View v, MotionEvent e) {
             switch (e.getAction()) {
                 case MotionEvent.ACTION_DOWN:
                     startX = lp.x; startY = lp.y;
-                    touchX = e.getRawX(); touchY = e.getRawY(); moved = false;
+                    touchX = e.getRawX(); touchY = e.getRawY();
+                    moved = false; longPressed = false;
+                    handler.postDelayed(longPress, ViewConfiguration.getLongPressTimeout());
                     return true;
                 case MotionEvent.ACTION_MOVE:
                     int dx = (int) (e.getRawX() - touchX), dy = (int) (e.getRawY() - touchY);
                     if (Math.abs(dx) > dp(8) || Math.abs(dy) > dp(8)) moved = true;
+                    if (moved) handler.removeCallbacks(longPress); // it's a drag, not a hold
                     lp.x = startX + dx; lp.y = startY + dy;
                     mWm.updateViewLayout(mView, lp);
                     return true;
                 case MotionEvent.ACTION_UP:
-                    if (!moved) onTap();
+                    handler.removeCallbacks(longPress);
+                    if (!moved && !longPressed) onTap();
                     return true;
             }
             return false;

@@ -149,7 +149,33 @@
                 android:resource="@xml/tts_accessibility_config" />
         </service>
 
+        <!-- "Speak" in the text-selection menu (PROCESS_TEXT). The reliable way
+             to read a selection from apps the screen-walk can't — Chrome/WebView
+             hide page selections from accessibility but pass them here. No-display
+             theme: it forwards the text to the player and finishes invisibly. -->
+        <activity
+            android:name="com.xport.terminal.TtsProcessText"
+            android:label="@string/tts_process_text_label"
+            android:theme="@android:style/Theme.NoDisplay"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
 
+        <!-- Reads the clipboard aloud (long-press the floating button). Invisible,
+             but a real activity so it can hold focus long enough to read the
+             clipboard — apps with trimmed menus that hide "Speak" still allow Copy.
+             Launched only by us. -->
+        <activity
+            android:name="com.xport.terminal.TtsReadClipboard"
+            android:theme="@style/InvisibleActivity"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:launchMode="singleInstance"
+            android:exported="false" />
 
         <!-- This (or rather, value 2.1 or higher) is needed to make the Samsung Galaxy S8 mark the
         app with "This app is optimized to run in full screen." -->

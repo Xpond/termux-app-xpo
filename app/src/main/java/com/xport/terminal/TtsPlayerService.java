@@ -24,6 +24,7 @@ import java.io.OutputStream;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Speaks a paragraph aloud, sentence by sentence, entirely on-device.
@@ -66,6 +67,15 @@ public class TtsPlayerService extends Service {
     public static final String ACTION_STOP = "com.xport.terminal.TTS_STOP";
     public static final String EXTRA_TEXT = "text";
 
+    /** Start (or feed) the player with text to speak. The single entry point for
+     *  every frontend — the screen reader, the "Speak" menu item, the clipboard
+     *  reader — so none of them repeat the intent shape. No-op on blank text. */
+    public static void speak(Context ctx, String text) {
+        if (text == null || text.trim().isEmpty()) return;
+        ctx.startService(new Intent(ctx, TtsPlayerService.class)
+            .setAction(ACTION_SPEAK).putExtra(EXTRA_TEXT, text.trim()));
+    }
+
     /** Fired when the speaker goes idle (everything fed has been voiced), so the
      *  reader/button can reset state. Cleared on stop. */
     public static volatile Runnable sOnIdle;
@@ -78,6 +88,11 @@ public class TtsPlayerService extends Service {
     // runs ahead of the speaker — it's ~10x real-time — without unbounded memory.
     private final LinkedBlockingQueue<byte[]> mPcmQueue = new LinkedBlockingQueue<>(2);
     private final AtomicBoolean mStopped = new AtomicBoolean(false);
+    // Sentences offered but not yet synthesized. The player must not call it idle
+    // while this is > 0: at startup the worker pulls a sentence out of mQueue and
+    // spends ~1s loading the model before any PCM appears — both queues are empty
+    // in that gap, which used to look "done" and tear down before the first word.
+    private final AtomicInteger mPending = new AtomicInteger(0);
     private Thread mWorker;   // synth: sentence -> PCM block -> mPcmQueue
     private Thread mPlayer;   // playback: mPcmQueue -> AudioTrack, continuous
     private AudioTrack mTrack;
@@ -103,7 +118,7 @@ public class TtsPlayerService extends Service {
             startWorker();
             startPlayer();
         }
-        for (String s : splitSentences(text)) mQueue.offer(s);
+        for (String s : splitSentences(text)) { mPending.incrementAndGet(); mQueue.offer(s); }
         return START_STICKY;
     }
 
@@ -122,7 +137,11 @@ public class TtsPlayerService extends Service {
                     String sentence = mQueue.take(); // blocks until text arrives
                     if (mStopped.get()) break;
                     byte[] pcm = synth(sentence);
+                    // Decrement only after synth returns: the sentence is now
+                    // accounted for by a PCM block (or a synth failure), so the
+                    // player won't see a false "idle" while we were still working.
                     if (pcm != null && pcm.length > 0) mPcmQueue.put(pcm); // backpressure
+                    mPending.decrementAndGet();
                 }
             } catch (InterruptedException ignored) {}
         });
@@ -146,7 +165,8 @@ public class TtsPlayerService extends Service {
                         // after reading wastes CPU/RAM and (with the overlay's
                         // "visible" scheduling) makes the app laggy. Next read
                         // respawns; the ~1s model reload is a fine per-session cost.
-                        if (mQueue.isEmpty()) {
+                        // mPending guards the startup gap (model still loading).
+                        if (mQueue.isEmpty() && mPending.get() == 0) {
                             Runnable cb = sOnIdle;
                             if (cb != null) cb.run();
                             teardown();
@@ -241,6 +261,7 @@ public class TtsPlayerService extends Service {
     /** Flush queues, stop the speaker now, end both threads + synth, drop overlay. */
     private void teardown() {
         mStopped.set(true);
+        mPending.set(0);
         mQueue.clear();
         mPcmQueue.clear();
         mPcmQueue.offer(EOS); // unblock the player if it's waiting on take()

@@ -49,14 +49,21 @@ public class TtsAccessibilityService extends AccessibilityService {
         return super.onUnbind(intent);
     }
 
-    /** Read the current screen's body text, then stop. */
-    public void readScreen() {
+    /** Arm a read: mark us reading and install the idle callback that flips the
+     *  button back to ▶ when the player finishes. Shared by the screen-walk and
+     *  the clipboard path (which starts the player from {@link TtsReadClipboard})
+     *  so the button reflects playback state no matter how reading was kicked off. */
+    public void beginRead() {
         mReading = true;
-        // When the speaker goes idle (finished reading), reset state + the button.
         TtsPlayerService.sOnIdle = () -> mMain.post(() -> {
             mReading = false;
             TtsFloatingButton.resetIcon();
         });
+    }
+
+    /** Read the current screen's body text, then stop. */
+    public void readScreen() {
+        beginRead();
         DisplayMetrics dm = getResources().getDisplayMetrics();
         Rect screen = new Rect(0, 0, dm.widthPixels, dm.heightPixels);
         // Walk the tree off the UI thread: getRootInActiveWindow() + the recursive
@@ -84,9 +91,7 @@ public class TtsAccessibilityService extends AccessibilityService {
             }
             String text = sb.toString().trim();
             if (text.isEmpty()) { abort(); return; }
-            startService(new Intent(this, TtsPlayerService.class)
-                .setAction(TtsPlayerService.ACTION_SPEAK)
-                .putExtra(TtsPlayerService.EXTRA_TEXT, text));
+            TtsPlayerService.speak(this, text);
         }, "tts-read-screen").start();
     }
 
