@@ -57,29 +57,45 @@ public class TtsAccessibilityService extends AccessibilityService {
             mReading = false;
             TtsFloatingButton.resetIcon();
         });
-        AccessibilityNodeInfo root = getRootInActiveWindow();
-        if (root == null) { mReading = false; return; }
         DisplayMetrics dm = getResources().getDisplayMetrics();
         Rect screen = new Rect(0, 0, dm.widthPixels, dm.heightPixels);
-        List<String> sentences = new ArrayList<>();
-        collect(root, screen, sentences, false);
+        // Walk the tree off the UI thread: getRootInActiveWindow() + the recursive
+        // collect() are cross-process IPC per node, and on heavy screens (a PDF
+        // page, a long Reddit thread) that takes seconds — run on the main thread
+        // it freezes the tap and the whole app. The button returns instantly;
+        // reading just starts a beat later.
+        new Thread(() -> {
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root == null) { abort(); return; }
+            List<String> sentences = new ArrayList<>();
+            collect(root, screen, sentences, false);
 
-        // Join fragments with newlines (espeak treats a newline as a clause break
-        // -> a natural pause, never voiced). Add a period only to a fragment that
-        // doesn't already end in sentence punctuation, so we keep end-of-sentence
-        // prosody without the spurious periods that made it say "dot".
-        StringBuilder sb = new StringBuilder();
-        for (String s : sentences) {
-            sb.append(s);
-            char last = s.charAt(s.length() - 1);
-            if (last != '.' && last != '!' && last != '?' && last != ':') sb.append('.');
-            sb.append('\n');
-        }
-        String text = sb.toString().trim();
-        if (text.isEmpty()) { mReading = false; return; }
-        startService(new Intent(this, TtsPlayerService.class)
-            .setAction(TtsPlayerService.ACTION_SPEAK)
-            .putExtra(TtsPlayerService.EXTRA_TEXT, text));
+            // Join fragments with newlines (espeak treats a newline as a clause
+            // break -> a natural pause, never voiced). Add a period only to a
+            // fragment that doesn't already end in sentence punctuation, so we keep
+            // end-of-sentence prosody without the spurious periods that made it say
+            // "dot".
+            StringBuilder sb = new StringBuilder();
+            for (String s : sentences) {
+                sb.append(s);
+                char last = s.charAt(s.length() - 1);
+                if (last != '.' && last != '!' && last != '?' && last != ':') sb.append('.');
+                sb.append('\n');
+            }
+            String text = sb.toString().trim();
+            if (text.isEmpty()) { abort(); return; }
+            startService(new Intent(this, TtsPlayerService.class)
+                .setAction(TtsPlayerService.ACTION_SPEAK)
+                .putExtra(TtsPlayerService.EXTRA_TEXT, text));
+        }, "tts-read-screen").start();
+    }
+
+    /** Reading found nothing to say (no tree / no body text): reset state and the
+     *  button icon so it doesn't stay stuck on ■. The off-thread walk can't touch
+     *  the icon directly, so post to main (same as the idle callback). */
+    private void abort() {
+        mReading = false;
+        mMain.post(TtsFloatingButton::resetIcon);
     }
 
     /** Whether a read-aloud session is currently active (drives the button icon). */
@@ -98,10 +114,11 @@ public class TtsAccessibilityService extends AccessibilityService {
      * Filters, each killing a class of garbage seen in testing:
      *  - skip nodes the framework marks not-visible-to-user (collapsed/hidden);
      *  - skip nodes whose on-screen bounds fall outside the display;
-     *  - skip any text inside a clickable container (buttons / nav chrome). Button
-     *    labels usually sit on a non-clickable TextView whose *ancestor* is the
-     *    clickable control, so we carry the "inside a control" state down the tree
-     *    rather than checking the text node alone;
+     *  - skip text inside *chrome* — a real button/switch, or a clickable node only
+     *    one line tall (a nav item, a chip). We do NOT skip all clickable subtrees:
+     *    card-based apps (news feeds, Reddit) wrap whole articles in a clickable
+     *    card, so blanket-skipping clickables threw away the entire screen. A tall
+     *    clickable node is content, not chrome — see {@link #isChrome};
      *  - take a node's own text only if no descendant carries text, so we read
      *    leaf content once instead of a container plus all its children.
      */
@@ -112,7 +129,7 @@ public class TtsAccessibilityService extends AccessibilityService {
         node.getBoundsInScreen(b);
         if (b.isEmpty() || !Rect.intersects(b, screen)) return;
 
-        inControl = inControl || isControl(node);
+        inControl = inControl || isChrome(node, b);
 
         boolean childHasText = false;
         for (int i = 0; i < node.getChildCount(); i++) {
@@ -121,15 +138,32 @@ public class TtsAccessibilityService extends AccessibilityService {
             if (out.size() > before) childHasText = true;
         }
         if (!childHasText && !inControl) {
+            // Prefer getText(); fall back to contentDescription. Canvas-rendered UIs
+            // (Flutter, Compose, WebView) expose no real TextViews — the whole
+            // screen is generic View nodes with empty text and the actual content
+            // in contentDescription. Without this fallback those apps read nothing.
             CharSequence t = node.getText();
+            if (t == null || t.toString().trim().isEmpty()) t = node.getContentDescription();
             if (t != null && t.toString().trim().length() > 0) out.add(t.toString().trim());
         }
     }
 
-    /** A tappable control or button — its text is nav chrome, not body content. */
-    private static boolean isControl(AccessibilityNodeInfo n) {
-        if (n.isClickable()) return true;
+    /**
+     * Is this node nav chrome (skip its text) vs. body content?
+     *  - a Button/Switch/CheckBox class is always chrome;
+     *  - a clickable node is chrome only if it's short — roughly one line tall.
+     *    Toolbar items, tabs and chips are one line; a tappable article card is
+     *    many lines. Height (in dp) is the cheap, app-agnostic discriminator that
+     *    keeps card content while still dropping nav.
+     */
+    private boolean isChrome(AccessibilityNodeInfo n, Rect bounds) {
         CharSequence cls = n.getClassName();
-        return cls != null && cls.toString().contains("Button");
+        if (cls != null) {
+            String c = cls.toString();
+            if (c.contains("Button") || c.contains("Switch") || c.contains("CheckBox")) return true;
+        }
+        if (!n.isClickable()) return false;
+        float density = getResources().getDisplayMetrics().density;
+        return bounds.height() < 56 * density; // ~one line / a touch target
     }
 }

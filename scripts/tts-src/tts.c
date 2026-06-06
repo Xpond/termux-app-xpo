@@ -13,6 +13,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <unistd.h>
+#include <setjmp.h>
 #include "speak_lib.h"
 #include "onnxruntime_c_api.h"
 #include "vocab_table.h"
@@ -21,9 +22,21 @@
 #define SAMPLE_RATE 24000
 
 static const OrtApi *g_ort = NULL;
+
+// In serve mode one bad sentence must NOT kill the process: exit(1) here runs the
+// C++ static destructors, and ONNX Runtime's global dtors abort on a destroyed
+// mutex (a known ORT shutdown bug) — which crashed the whole reader on the first
+// awkward line (e.g. a PDF's dotted contents page). So a synth-time ORT error
+// longjmps back to synth() (g_recover set), which returns 0 = "skip this line".
+// Setup errors keep the old behavior (fatal), since there's nothing to recover to.
+static jmp_buf g_recover;
+static int g_recovering = 0;
 static void check(OrtStatus *st, const char *what) {
-    if (st) { fprintf(stderr, "ORT %s: %s\n", what, g_ort->GetErrorMessage(st));
-              g_ort->ReleaseStatus(st); exit(1); }
+    if (!st) return;
+    fprintf(stderr, "ORT %s: %s\n", what, g_ort->GetErrorMessage(st));
+    g_ort->ReleaseStatus(st);
+    if (g_recovering) longjmp(g_recover, 1);
+    exit(1);
 }
 
 // --- vocab lookup: Unicode code point -> token id (binary search VOCAB) ---
@@ -216,6 +229,9 @@ static size_t synth(const char *text, float **out) {
     size_t row = cc < 399 ? cc : 399;
     float *style = g_voices + row * 256;
 
+    if (nt == 0) return 0;                 // nothing synthesizable on this line
+    if (setjmp(g_recover)) { g_recovering = 0; return 0; } // an ORT call failed
+    g_recovering = 1;
     int64_t ids_sh[2]={1,(int64_t)nt}; OrtValue *it;
     check(g_ort->CreateTensorWithDataAsOrtValue(g_mem,tokens,nt*8,ids_sh,2,ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64,&it),"ids");
     int64_t st_sh[2]={1,256}; OrtValue *stt;
@@ -230,6 +246,7 @@ static size_t synth(const char *text, float **out) {
     OrtTensorTypeAndShapeInfo *ti; check(g_ort->GetTensorTypeAndShape(ov,&ti),"shape");
     size_t total; check(g_ort->GetTensorShapeElementCount(ti,&total),"count");
     g_ort->ReleaseTensorTypeAndShapeInfo(ti);
+    g_recovering = 0;
     return total <= TRIM_TAIL ? 0 : total - TRIM_TAIL;
 }
 

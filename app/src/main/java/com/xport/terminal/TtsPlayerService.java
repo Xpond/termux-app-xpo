@@ -193,17 +193,23 @@ public class TtsPlayerService extends Service {
      * mono PCM (0 = synth failure). Returns the PCM, or null on error.
      */
     private byte[] synth(String sentence) {
+        OutputStream in = mServeIn;
+        DataInputStream out = mServeOut;
+        if (in == null || out == null) return null; // torn down under us
         try {
-            mServeIn.write(sentence.getBytes("UTF-8"));
-            mServeIn.write('\n');
-            mServeIn.flush();
-            int n = readLE32(mServeOut);
+            in.write(sentence.getBytes("UTF-8"));
+            in.write('\n');
+            in.flush();
+            int n = readLE32(out);
             if (n <= 0) return null;
             byte[] pcm = new byte[n];
-            mServeOut.readFully(pcm);
+            out.readFully(pcm);
             return pcm;
         } catch (Exception e) {
-            Log.e(TAG, "synth failed", e);
+            // A teardown (stop / idle) closes the pipe under us mid-read — that's
+            // the InterruptedIOException, expected, not a failure. Only log a real
+            // synth error.
+            if (!mStopped.get()) Log.e(TAG, "synth failed", e);
             return null;
         }
     }
@@ -250,9 +256,24 @@ public class TtsPlayerService extends Service {
         stopSelf();
     }
 
+    /**
+     * Stop the resident synth. Close its stdin FIRST so its serve loop sees EOF
+     * and returns through tts-bin's `_exit(0)` — skipping the C++ static
+     * destructors. SIGTERM (destroy()) instead runs them, and ONNX Runtime's
+     * global dtors touch an already-destroyed mutex → SIGABRT on every offload
+     * (the crashy "model offload" we saw). destroy() stays only as a fallback if
+     * it doesn't exit promptly.
+     */
     private void stopServe() {
-        if (mServe != null) { mServe.destroy(); mServe = null; }
-        mServeIn = null; mServeOut = null;
+        Process p = mServe;
+        OutputStream in = mServeIn;
+        mServe = null; mServeIn = null; mServeOut = null;
+        if (in != null) { try { in.close(); } catch (Exception ignored) {} }
+        if (p != null) {
+            try {
+                if (!p.waitFor(500, TimeUnit.MILLISECONDS)) p.destroy();
+            } catch (Exception e) { p.destroy(); }
+        }
     }
 
     // --- overlay: keep playback in the /foreground cpuset when backgrounded.
