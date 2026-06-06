@@ -100,16 +100,21 @@ OpenAI-compatible HTTP API for other apps, see [`docs/llmd.md`](llmd.md).
 ```
 llm pull qwen2.5:1.5b     # download a model (Ollama-like name)
 llm pull <url>            # or any direct GGUF URL
+llm add <name> <url>      # register your own name for a GGUF URL
 llm list                  # list downloaded models (* = default)
 llm run qwen2.5:1.5b      # chat (sets it as default)
+llm run <name> -n 512 ... # any trailing flags pass through to llama-cli
 llm                       # chat with the default/last model
 llm rm <name>             # delete a model
 llm names                 # list known names
 ```
 
-Models live in `~/models`. Known names map to HuggingFace Q4_K_M GGUFs (edit the
-`url_for` table in `scripts/llm` to add more). In the chat REPL: `/exit` or
-Ctrl+C to quit, `/regen`, `/clear`.
+Models live in `~/models`. Known names map to HuggingFace Q4_K_M GGUFs. To add a
+model without rebuilding, run `llm add <name> <url>` on-device — it appends to
+`~/models/registry.txt` (a plain `name url` per line), which `url_for` checks
+before the built-in table. (The baked `url_for` table in `scripts/llm` is just
+the shipped defaults.) In the chat REPL: `/exit` or Ctrl+C to quit, `/regen`,
+`/clear`.
 
 > **Keep XPort in the foreground while `llm pull` downloads.** The download runs
 > in the app (see below), driven by a `FileObserver` in `TermuxActivity`. If you
@@ -126,6 +131,10 @@ degrade. Default flags: `-t 4` (big cores), `-c 2048`.
 
 `gemma4:e4b` (Gemma 4 E4B, Apr 2026) is a strong ~4B with native thinking and
 long context — good on ≥8 GB devices; supported by the pinned llama.cpp.
+`gemma4:e4b-mobile` and `gemma4:e4b-q4` are the QAT (quantization-aware
+training) builds Google released Jun 2026: same model, lower footprint —
+`-mobile` ≈ 3.2 GB (UD-Q2_K_XL mobile schema), `-q4` ≈ 5.1 GB (Q4_0, closer to
+full quality). Prefer these for tighter-RAM devices.
 
 ### How it's built (`scripts/build-minimal-bootstrap.sh`, `build_llama`)
 

@@ -9,8 +9,17 @@ DEFAULT_FILE="$MODELS_DIR/.default"
 THREADS=4
 CTX=2048
 
-# Curated name -> direct GGUF URL (Q4_K_M). Extend by adding lines here.
+# User-added names live in ~/models/registry.txt as "name<space>url" lines.
+# No rebuild needed: add them on-device with `llm add <name> <url>`.
+REGISTRY="$MODELS_DIR/registry.txt"
+
+# Curated name -> direct GGUF URL (Q4_K_M). User registry wins; extend either.
 url_for() {
+  if [ -f "$REGISTRY" ]; then
+    while read -r n u; do
+      [ "$n" = "$1" ] && { echo "$u"; return; }
+    done < "$REGISTRY"
+  fi
   case "$1" in
     qwen2.5:0.5b) echo "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf" ;;
     qwen2.5:1.5b) echo "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf" ;;
@@ -19,6 +28,8 @@ url_for() {
     llama3.2:3b)  echo "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf" ;;
     gemma2:2b)    echo "https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf" ;;
     gemma4:e4b)   echo "https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_K_M.gguf" ;;
+    gemma4:e4b-mobile) echo "https://huggingface.co/unsloth/gemma-4-E4B-it-qat-mobile-GGUF/resolve/main/gemma-4-E4B-it-qat-UD-Q2_K_XL.gguf" ;;
+    gemma4:e4b-q4) echo "https://huggingface.co/google/gemma-4-E4B-it-qat-q4_0-gguf/resolve/main/gemma-4-E4B_q4_0-it.gguf" ;;
     *)            echo "" ;;
   esac
 }
@@ -31,6 +42,32 @@ file_for() {
 known_names() {
   echo "  qwen2.5:0.5b  qwen2.5:1.5b  qwen2.5:3b"
   echo "  llama3.2:1b   llama3.2:3b   gemma2:2b   gemma4:e4b"
+  echo "  gemma4:e4b-mobile (QAT, 3.2GB)   gemma4:e4b-q4 (QAT, 5.1GB)"
+  if [ -f "$REGISTRY" ]; then
+    names=""
+    while read -r n u; do names="$names  $n"; done < "$REGISTRY"
+    [ -n "$names" ] && { echo "  (added):"; echo "$names"; }
+  fi
+}
+
+# Register a name -> url in the on-device registry (no rebuild needed).
+do_add() {
+  name="$1"; url="$2"
+  if [ -z "$name" ] || [ -z "$url" ]; then
+    echo "Usage: llm add <name> <url>" >&2; return 1
+  fi
+  mkdir -p "$MODELS_DIR"
+  if [ -f "$REGISTRY" ]; then
+    while read -r n u; do
+      [ "$n" = "$name" ] && {
+        echo "Error: '$name' already added. Remove it from $REGISTRY to change it." >&2
+        return 1
+      }
+    done < "$REGISTRY"
+  fi
+  echo "$name $url" >> "$REGISTRY"
+  echo "Added: $name  ->  $url"
+  echo "Pull it with: llm pull $name"
 }
 
 usage() {
@@ -38,9 +75,11 @@ usage() {
   echo ""
   echo "Usage:"
   echo "  llm                 Chat with the default model"
-  echo "  llm run <name>      Chat with a model (sets it as default)"
+  echo "  llm run <name> [flags]  Chat (sets default); flags pass to llama-cli"
+  echo "                          e.g. -n 512 (max out tokens), --temp 0.7"
   echo "  llm pull <name>     Download a model into ~/models"
   echo "  llm pull <url>      Download any GGUF by direct URL"
+  echo "  llm add <name> <url>  Register a name for a GGUF URL (no rebuild)"
   echo "  llm list            List downloaded models"
   echo "  llm rm <name>       Delete a downloaded model"
   echo "  llm names           Show known model names"
@@ -141,7 +180,11 @@ resolve_model() {
 }
 
 do_run() {
-  arg="$1"
+  # First arg is the model name only if it's not a flag; rest go to llama-cli.
+  case "$1" in
+    ""|-*) arg="" ;;
+    *)     arg="$1"; shift ;;
+  esac
   if [ -z "$arg" ]; then
     if [ -f "$DEFAULT_FILE" ]; then
       model="$(cat "$DEFAULT_FILE")"
@@ -163,15 +206,18 @@ do_run() {
   fi
   mkdir -p "$MODELS_DIR"
   echo "$model" > "$DEFAULT_FILE"
-  exec "$PREFIX/bin/llama-cli" -m "$model" -t "$THREADS" -c "$CTX"
+  # User flags come last so they override our defaults (llama-cli takes the last).
+  exec "$PREFIX/bin/llama-cli" -m "$model" -t "$THREADS" -c "$CTX" "$@"
 }
 
 case "$1" in
-  ""|run)        do_run "$2" ;;
+  run)           shift; do_run "$@" ;;
+  "")            do_run ;;
   pull)          do_pull "$2" ;;
+  add)           do_add "$2" "$3" ;;
   list|ls)       do_list ;;
   names)         echo "Known model names:"; known_names ;;
   rm)            f="$(resolve_model "$2")"; [ -n "$f" ] && rm -f "$f" && echo "Removed $2" || echo "Not found: $2" >&2 ;;
   -h|--help|help) usage ;;
-  *)             do_run "$1" ;;
+  *)             do_run "$@" ;;
 esac
