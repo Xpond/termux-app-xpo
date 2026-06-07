@@ -20,17 +20,19 @@ import android.widget.Toast;
 /**
  * The read-aloud trigger: a draggable always-on-top ▶ bubble.
  *
- * Tap -> the accessibility service reads the current screen. Tap while reading
- * -> stop. Drag to reposition. Shown only while the accessibility service is
- * connected (it has nothing to read with otherwise); the service shows/hides it
- * on connect/disconnect.
+ * Single tap -> read the current screen; while reading -> pause; while paused ->
+ * resume from the same sentence. Double tap -> stop entirely. Long-press -> read
+ * the clipboard. Drag to reposition. The glyph shows ⏸ while playing and ▶ when
+ * idle or paused, so it always says what the next single tap will do. Shown only
+ * while the accessibility service is connected (it has nothing to read with
+ * otherwise); the service shows/hides it on connect/disconnect.
  *
  * Needs the "Display over other apps" permission (already used by the llmd
  * overlay). No-op without it.
  */
 public class TtsFloatingButton {
 
-    private static final String PLAY = "▶", STOP = "■";
+    private static final String PLAY = "▶", PAUSE = "⏸";
     // Glassy dark fill + a single calm accent for the glyph (shape carries the
     // state, not colour). Diameter is fixed so it reads as a round FAB, not a
     // padded glyph.
@@ -111,6 +113,9 @@ public class TtsFloatingButton {
         mView = null;
     }
 
+    /** Single tap: idle -> read screen, playing -> pause, paused -> resume. The
+     *  service owns the real state (reading ends on its own when text runs out),
+     *  so ask it rather than tracking locally. */
     private void onTap() {
         TtsAccessibilityService svc = TtsAccessibilityService.INSTANCE;
         if (svc == null) {
@@ -122,10 +127,15 @@ public class TtsFloatingButton {
                 Toast.LENGTH_LONG).show();
             return;
         }
-        // The service owns the real reading state (it ends on its own when the
-        // text runs out), so ask it rather than tracking locally.
-        if (svc.isReading()) { svc.stopReading(); mView.setText(PLAY); }
-        else                 { svc.readScreen(); mView.setText(STOP); }
+        if (!svc.isReading())     { svc.readScreen();   mView.setText(PAUSE); }
+        else if (svc.isPaused())  { svc.resumeReading(); mView.setText(PAUSE); }
+        else                      { svc.pauseReading();  mView.setText(PLAY); }
+    }
+
+    /** Double tap: stop entirely and reset the icon. */
+    private void onDoubleTap() {
+        TtsAccessibilityService svc = TtsAccessibilityService.INSTANCE;
+        if (svc != null && svc.isReading()) { svc.stopReading(); mView.setText(PLAY); }
     }
 
     /** Long-press: read the clipboard. The transparent activity does the actual
@@ -137,19 +147,23 @@ public class TtsFloatingButton {
      *  (the player never starts then, so no idle callback fires). */
     private void onLongPress() {
         TtsAccessibilityService svc = TtsAccessibilityService.INSTANCE;
-        if (svc != null) { svc.beginRead(); mView.setText(STOP); }
+        if (svc != null) { svc.beginRead(); mView.setText(PAUSE); }
         mContext.startActivity(new Intent(mContext, TtsReadClipboard.class)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
     }
 
-    /** Distinguishes tap (read screen) from drag (reposition) from long-press
-     *  (read clipboard). A posted runnable fires the long-press if the finger
-     *  neither moves nor lifts within the system timeout. */
+    /** Distinguishes single tap (read/pause/resume) from double tap (stop) from
+     *  drag (reposition) from long-press (read clipboard). A posted runnable fires
+     *  the long-press if the finger neither moves nor lifts within the system
+     *  timeout. The single tap fires immediately; a second tap within the
+     *  double-tap window issues a stop on top of it (cheap, no added tap latency —
+     *  the brief pause-flash before stop is acceptable for a rare action). */
     private class DragTapListener implements View.OnTouchListener {
         private final WindowManager.LayoutParams lp;
         private final Handler handler = new Handler(Looper.getMainLooper());
         private int startX, startY; private float touchX, touchY;
         private boolean moved, longPressed;
+        private long lastTapUp; // ms timestamp of the previous clean tap-up
         private final Runnable longPress = () -> { longPressed = true; onLongPress(); };
         DragTapListener(WindowManager.LayoutParams lp) { this.lp = lp; }
 
@@ -170,7 +184,13 @@ public class TtsFloatingButton {
                     return true;
                 case MotionEvent.ACTION_UP:
                     handler.removeCallbacks(longPress);
-                    if (!moved && !longPressed) onTap();
+                    if (moved || longPressed) return true;
+                    long now = e.getEventTime();
+                    if (now - lastTapUp <= ViewConfiguration.getDoubleTapTimeout()) {
+                        onDoubleTap(); lastTapUp = 0; // consume; don't chain a triple
+                    } else {
+                        onTap(); lastTapUp = now;
+                    }
                     return true;
             }
             return false;

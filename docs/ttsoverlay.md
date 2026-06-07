@@ -18,8 +18,9 @@ app you're listening to. No network, no other app's cooperation. Three ways in:
 1. Grant **Settings > Accessibility > xport** (one-time; the OS gate for reading
    the screen) and **Display over other apps** (for the button + background audio).
 2. A floating **▶** appears (drag to reposition). Open any app/webpage, tap it →
-   it reads the visible body text. Tap **■** to stop. It stops on its own at the
-   end and the icon resets.
+   it reads the visible body text and the icon becomes **⏸**. **Tap to pause**
+   (icon → ▶); tap again to **resume** from the start of the sentence it was on.
+   **Double-tap** to stop. It also stops on its own at the end and the icon resets.
 3. To read a **selection**: highlight text and pick **Speak** from the popup menu
    (may be under ⋮). If the menu doesn't offer it, **Copy** the text and
    **long-press** the ▶ button instead — same result. Both drive the same icon
@@ -48,10 +49,20 @@ Three pieces, all in-process (`app/src/main/java/com/xport/terminal/`):
   idle it fully tears down (kills `tts-bin`, drops the overlay) so nothing
   lingers. A `mPending` counter keeps it from mistaking the ~1s model-load gap
   (queues briefly empty before the first PCM) for "done" and tearing down early.
+  **Pause/resume** is non-destructive: pause stops the speaker and keeps the synth
+  loaded. Each synth+player thread pair carries a **generation** token, so
+  pause/resume just bump it to retire the old pair without joining (both are
+  instant). The player caches the sentence it's voicing; resume replays that PCM
+  from memory and re-synths only from the *next* sentence — so resume is instant
+  even though one synth takes ~seconds. A lock around the pipe lets a retired
+  worker finish its in-flight read before the new one writes, keeping the
+  length-prefixed protocol aligned.
 - **`TtsFloatingButton`** — the draggable ▶ overlay. The service shows/hides it on
-  connect/disconnect; **tap** toggles screen-read/stop, **long-press** reads the
-  clipboard (via `TtsReadClipboard`). A round glassy bubble; the glyph shape (▶/■)
-  carries the state.
+  connect/disconnect; **single tap** = read / pause / resume (whichever the state
+  calls for), **double tap** = stop, **long-press** reads the clipboard (via
+  `TtsReadClipboard`). The single tap fires immediately; a second tap inside the
+  double-tap window issues stop on top of it (no per-tap latency). A round glassy
+  bubble; the glyph (⏸ playing, ▶ idle/paused) says what the next tap will do.
 - **`TtsProcessText`** — the "Speak" menu item (`PROCESS_TEXT`). Invisible
   (`Theme.NoDisplay`); the system hands it the selected text, it calls `speak()`
   and finishes. Works in browsers, where the selection never reaches the a11y tree.

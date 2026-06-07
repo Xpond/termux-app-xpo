@@ -45,8 +45,14 @@ import java.util.concurrent.atomic.AtomicInteger;
  * you're listening to. No HTTP, no daemon — the caller is in-process; this just
  * owns the queue and the speaker.
  *
+ * Pause is non-destructive: it stops the speaker and freezes the cursor but
+ * keeps the resident synth (and the ~320MB model) loaded, so resuming is
+ * instant and re-speaks from the start of the sentence that was playing.
+ *
  * Driven by Intents:
  *   ACTION_SPEAK  + EXTRA_TEXT  -> enqueue + start speaking
+ *   ACTION_PAUSE                -> stop the speaker, keep position + synth
+ *   ACTION_RESUME               -> re-speak from the paused sentence
  *   ACTION_STOP                 -> flush the queue, stop instantly, tear down
  */
 public class TtsPlayerService extends Service {
@@ -64,8 +70,18 @@ public class TtsPlayerService extends Service {
     private static final int SAMPLE_RATE = 24000; // KittenTTS output
 
     public static final String ACTION_SPEAK = "com.xport.terminal.TTS_SPEAK";
+    public static final String ACTION_PAUSE = "com.xport.terminal.TTS_PAUSE";
+    public static final String ACTION_RESUME = "com.xport.terminal.TTS_RESUME";
     public static final String ACTION_STOP = "com.xport.terminal.TTS_STOP";
     public static final String EXTRA_TEXT = "text";
+
+    /** Pause the speaker, keeping position and the loaded synth. No-op if idle. */
+    public static void pause(Context ctx) { send(ctx, ACTION_PAUSE); }
+    /** Resume from the sentence that was playing when paused. No-op if not paused. */
+    public static void resume(Context ctx) { send(ctx, ACTION_RESUME); }
+    private static void send(Context ctx, String action) {
+        ctx.startService(new Intent(ctx, TtsPlayerService.class).setAction(action));
+    }
 
     /** Start (or feed) the player with text to speak. The single entry point for
      *  every frontend — the screen reader, the "Speak" menu item, the clipboard
@@ -80,18 +96,48 @@ public class TtsPlayerService extends Service {
      *  reader/button can reset state. Cleared on stop. */
     public static volatile Runnable sOnIdle;
 
-    // A sentinel byte[0] pushed onto the PCM queue to mark "stop" for the player.
-    private static final byte[] EOS = new byte[0];
+    // A sentinel pushed onto the PCM queue to mark "stop" for the player.
+    private static final Block EOS = new Block(-1, new byte[0]);
 
-    private final LinkedBlockingQueue<String> mQueue = new LinkedBlockingQueue<>();
+    /** A synthesized PCM block tagged with the index of the sentence it came from,
+     *  so the player always knows the live position — needed to rewind to the
+     *  start of the *playing* sentence on pause (synth runs ~2 sentences ahead). */
+    private static final class Block {
+        final int index; final byte[] pcm;
+        Block(int index, byte[] pcm) { this.index = index; this.pcm = pcm; }
+    }
+
+    // The session's sentences, in order, and the cursor the worker synths from.
+    // Pause rewinds the cursor to the playing sentence; resume restarts here.
+    private final java.util.List<String> mSentences =
+        java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+    private int mSynthNext = 0;     // next sentence index the worker will synthesize
+    private volatile int mPlayIndex = 0; // sentence the player is voicing now (from Block)
+    private final Object mGate = new Object(); // worker waits here when caught up
+    // Serializes pipe access. A paused worker can still be finishing its in-flight
+    // synth() read when resume spawns a new worker; this lock makes the new one
+    // wait out that read instead of interleaving writes/reads on the same pipe and
+    // desyncing the length-prefixed protocol. Lets resume skip a blocking join.
+    private final Object mSynthLock = new Object();
+    // Generation token: bumped on pause/resume/teardown. Each worker+player pair
+    // captures it at spawn and loops only while it still matches, so a retired pair
+    // winds down on its own without the caller joining it — pause and resume both
+    // return instantly. mPaused is now purely "audio paused", not a loop signal.
+    private volatile int mGen = 0;
+    // The PCM block the player is currently voicing. Cached so resume can replay it
+    // from memory — synth is slow (~seconds/sentence), so re-synthesizing the paused
+    // sentence made resume lag; replaying the cached audio makes it instant.
+    private volatile Block mCurrentBlock;
+
     // Synthesized PCM blocks waiting to play. Bounded (look-ahead of 2) so synth
     // runs ahead of the speaker — it's ~10x real-time — without unbounded memory.
-    private final LinkedBlockingQueue<byte[]> mPcmQueue = new LinkedBlockingQueue<>(2);
+    private final LinkedBlockingQueue<Block> mPcmQueue = new LinkedBlockingQueue<>(2);
     private final AtomicBoolean mStopped = new AtomicBoolean(false);
+    private final AtomicBoolean mPaused = new AtomicBoolean(false);
     // Sentences offered but not yet synthesized. The player must not call it idle
-    // while this is > 0: at startup the worker pulls a sentence out of mQueue and
-    // spends ~1s loading the model before any PCM appears — both queues are empty
-    // in that gap, which used to look "done" and tear down before the first word.
+    // while this is > 0: at startup the worker pulls a sentence and spends ~1s
+    // loading the model before any PCM appears — both queues are empty in that
+    // gap, which used to look "done" and tear down before the first word.
     private final AtomicInteger mPending = new AtomicInteger(0);
     private Thread mWorker;   // synth: sentence -> PCM block -> mPcmQueue
     private Thread mPlayer;   // playback: mPcmQueue -> AudioTrack, continuous
@@ -107,18 +153,29 @@ public class TtsPlayerService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         String action = intent != null ? intent.getAction() : null;
         if (ACTION_STOP.equals(action)) { teardown(); return START_NOT_STICKY; }
+        if (ACTION_PAUSE.equals(action)) { pauseInternal(); return START_STICKY; }
+        if (ACTION_RESUME.equals(action)) { resumeInternal(); return START_STICKY; }
 
         String text = intent != null ? intent.getStringExtra(EXTRA_TEXT) : null;
         if (text == null || text.trim().isEmpty()) return START_NOT_STICKY;
 
         if (mWorker == null) {
+            // Fresh utterance: clear any paused-session state (a new "Speak" while
+            // paused supersedes the old read) and reset the cursor before starting.
             mStopped.set(false); // clear the flag a previous teardown left set
+            mPaused.set(false);
+            synchronized (mGate) { mSentences.clear(); mSynthNext = 0; }
+            mPlayIndex = 0; mPending.set(0); mCurrentBlock = null;
             startForeground(NOTIF_ID, buildNotification());
             addOverlay();
             startWorker();
             startPlayer();
         }
-        for (String s : splitSentences(text)) { mPending.incrementAndGet(); mQueue.offer(s); }
+        // Append to the session's sentence list; wake the worker if it's caught up.
+        synchronized (mGate) {
+            for (String s : splitSentences(text)) { mPending.incrementAndGet(); mSentences.add(s); }
+            mGate.notifyAll();
+        }
         return START_STICKY;
     }
 
@@ -128,19 +185,28 @@ public class TtsPlayerService extends Service {
         return text.replaceAll("\\s+", " ").trim().split("(?<=[.!?])\\s+|\\n+");
     }
 
-    /** Synth thread: pull a sentence, synthesize it to a PCM block, queue it. */
+    /** Synth thread: take the next sentence (by cursor), synthesize it, queue the
+     *  PCM tagged with its index. Waits on mGate when caught up to the last fed
+     *  sentence; pause interrupts it. */
     private void startWorker() {
+        final int gen = mGen;
         mWorker = new Thread(() -> {
             try {
                 if (!startServe()) { mPcmQueue.put(EOS); return; }
-                while (!mStopped.get()) {
-                    String sentence = mQueue.take(); // blocks until text arrives
-                    if (mStopped.get()) break;
+                while (!mStopped.get() && gen == mGen) {
+                    int idx; String sentence;
+                    synchronized (mGate) {
+                        while (mSynthNext >= mSentences.size()
+                               && !mStopped.get() && gen == mGen) mGate.wait();
+                        if (mStopped.get() || gen != mGen) break;
+                        idx = mSynthNext++;
+                        sentence = mSentences.get(idx);
+                    }
                     byte[] pcm = synth(sentence);
                     // Decrement only after synth returns: the sentence is now
                     // accounted for by a PCM block (or a synth failure), so the
                     // player won't see a false "idle" while we were still working.
-                    if (pcm != null && pcm.length > 0) mPcmQueue.put(pcm); // backpressure
+                    if (pcm != null && pcm.length > 0) mPcmQueue.put(new Block(idx, pcm));
                     mPending.decrementAndGet();
                 }
             } catch (InterruptedException ignored) {}
@@ -152,21 +218,26 @@ public class TtsPlayerService extends Service {
      *  Because the next block is already synthesized and waiting, there's no gap
      *  between sentences — the speaker never waits on synthesis. */
     private void startPlayer() {
+        final int gen = mGen;
         mPlayer = new Thread(() -> {
             try {
                 ensureTrack();
                 mTrack.play();
-                while (!mStopped.get()) {
-                    byte[] pcm = mPcmQueue.poll(200, TimeUnit.MILLISECONDS);
-                    if (pcm == null) {
+                while (!mStopped.get() && gen == mGen) {
+                    Block b = mPcmQueue.poll(200, TimeUnit.MILLISECONDS);
+                    if (b == null) {
                         // Nothing to play and synthesis is idle: reading is done.
                         // Reset the button, then fully tear down — holding the
                         // resident tts-bin (~320MB) and the foreground overlay
                         // after reading wastes CPU/RAM and (with the overlay's
                         // "visible" scheduling) makes the app laggy. Next read
                         // respawns; the ~1s model reload is a fine per-session cost.
-                        // mPending guards the startup gap (model still loading).
-                        if (mQueue.isEmpty() && mPending.get() == 0) {
+                        // mPending guards the startup gap (model still loading);
+                        // the gen check keeps a paused player (queues drain) from
+                        // ever reaching this and looking "done".
+                        boolean caughtUp;
+                        synchronized (mGate) { caughtUp = mSynthNext >= mSentences.size(); }
+                        if (caughtUp && mPending.get() == 0 && gen == mGen) {
                             Runnable cb = sOnIdle;
                             if (cb != null) cb.run();
                             teardown();
@@ -174,9 +245,12 @@ public class TtsPlayerService extends Service {
                         }
                         continue;
                     }
-                    if (pcm == EOS || mStopped.get()) break;
+                    if (b == EOS || mStopped.get() || gen != mGen) break;
+                    mPlayIndex = b.index;       // live position, for pause-rewind
+                    mCurrentBlock = b;          // cached so resume can replay it instantly
+                    byte[] pcm = b.pcm;
                     int off = 0;
-                    while (off < pcm.length && !mStopped.get()) {
+                    while (off < pcm.length && !mStopped.get() && gen == mGen) {
                         int w = mTrack.write(pcm, off, pcm.length - off);
                         if (w <= 0) break;
                         off += w;
@@ -187,8 +261,10 @@ public class TtsPlayerService extends Service {
         mPlayer.start();
     }
 
-    /** Spawn the resident synthesizer; the 78MB model loads once, here. */
+    /** Spawn the resident synthesizer; the 78MB model loads once, here. Reused
+     *  across a pause/resume — if it's already up, this is a no-op. */
     private boolean startServe() {
+        if (mServe != null) return true;
         try {
             ProcessBuilder pb = new ProcessBuilder(
                 TTS_BIN, SHARE, MODEL, VOICES, ESPEAK_VOICE, "--serve");
@@ -217,14 +293,18 @@ public class TtsPlayerService extends Service {
         DataInputStream out = mServeOut;
         if (in == null || out == null) return null; // torn down under us
         try {
-            in.write(sentence.getBytes("UTF-8"));
-            in.write('\n');
-            in.flush();
-            int n = readLE32(out);
-            if (n <= 0) return null;
-            byte[] pcm = new byte[n];
-            out.readFully(pcm);
-            return pcm;
+            // One request/response per lock hold: a superseded worker finishes its
+            // read here before any new worker can write, so the pipe stays aligned.
+            synchronized (mSynthLock) {
+                in.write(sentence.getBytes("UTF-8"));
+                in.write('\n');
+                in.flush();
+                int n = readLE32(out);
+                if (n <= 0) return null;
+                byte[] pcm = new byte[n];
+                out.readFully(pcm);
+                return pcm;
+            }
         } catch (Exception e) {
             // A teardown (stop / idle) closes the pipe under us mid-read — that's
             // the InterruptedIOException, expected, not a failure. Only log a real
@@ -261,10 +341,13 @@ public class TtsPlayerService extends Service {
     /** Flush queues, stop the speaker now, end both threads + synth, drop overlay. */
     private void teardown() {
         mStopped.set(true);
+        mPaused.set(false);
+        mGen++;                 // retire any running threads (gen mismatch on top of mStopped)
         mPending.set(0);
-        mQueue.clear();
+        mCurrentBlock = null;
+        synchronized (mGate) { mSentences.clear(); mSynthNext = 0; mGate.notifyAll(); }
         mPcmQueue.clear();
-        mPcmQueue.offer(EOS); // unblock the player if it's waiting on take()
+        mPcmQueue.offer(EOS); // unblock the player if it's waiting on poll()
         if (mTrack != null) {
             try { mTrack.pause(); mTrack.flush(); mTrack.release(); } catch (Exception ignored) {}
             mTrack = null;
@@ -275,6 +358,47 @@ public class TtsPlayerService extends Service {
         removeOverlay();
         stopForeground(true);
         stopSelf();
+    }
+
+    /** Pause: instant. Bump the generation to retire the running worker+player
+     *  (they exit on their own — no join), stop the speaker, and freeze the cursor
+     *  on the sentence that was playing. The resident synth + overlay stay up so
+     *  resume is fast. No-op if nothing is playing. */
+    private void pauseInternal() {
+        if (mWorker == null || mPaused.get()) return;
+        mPaused.set(true);
+        mGen++;                                          // retire the current threads
+        synchronized (mGate) {
+            // The playing sentence is cached in mCurrentBlock and replayed on
+            // resume, so the worker resumes synthesizing from the *next* one.
+            mSynthNext = mPlayIndex + 1;
+            mGate.notifyAll();                           // wake a wait()-stuck worker
+        }
+        if (mTrack != null) { try { mTrack.pause(); mTrack.flush(); } catch (Exception ignored) {} }
+        mPcmQueue.clear();                               // unblock a put()-stuck worker
+        if (mWorker != null) mWorker.interrupt();        // break wait()/put() promptly
+        if (mPlayer != null) mPlayer.interrupt();
+        mWorker = null; mPlayer = null;                  // references gone; threads self-retire
+    }
+
+    /** Resume: instant. Spawn a fresh worker+player at the next generation from the
+     *  frozen cursor. A retired worker still finishing its in-flight synth() read
+     *  holds mSynthLock, so the new worker waits out that read before touching the
+     *  pipe — no join needed, no desync. No-op if not paused; synth + overlay are
+     *  still up from the pause. */
+    private void resumeInternal() {
+        if (!mPaused.get()) return;
+        mGen++;                                          // a clean generation for the new pair
+        mPcmQueue.clear();                               // drop stale blocks from the old pair
+        // Replay the cached current sentence instantly (no re-synth), then let the
+        // worker fill in from the next sentence while it plays.
+        Block cur = mCurrentBlock;
+        if (cur != null) mPcmQueue.offer(cur);
+        mPending.set(Math.max(0, mSentences.size() - mSynthNext));
+        mPaused.set(false);
+        if (mTrack != null) { try { mTrack.flush(); mTrack.play(); } catch (Exception ignored) {} }
+        startWorker();
+        startPlayer();
     }
 
     /**

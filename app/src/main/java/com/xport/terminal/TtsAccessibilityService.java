@@ -31,6 +31,7 @@ public class TtsAccessibilityService extends AccessibilityService {
     static TtsAccessibilityService INSTANCE;
     private final Handler mMain = new Handler(Looper.getMainLooper());
     private volatile boolean mReading;
+    private volatile boolean mPaused;
 
     @Override public void onServiceConnected() {
         INSTANCE = this;
@@ -55,11 +56,30 @@ public class TtsAccessibilityService extends AccessibilityService {
      *  so the button reflects playback state no matter how reading was kicked off. */
     public void beginRead() {
         mReading = true;
+        mPaused = false;
         TtsPlayerService.sOnIdle = () -> mMain.post(() -> {
             mReading = false;
+            mPaused = false;
             TtsFloatingButton.resetIcon();
         });
     }
+
+    /** Pause playback, keeping position; the button flips to ▶. No-op if idle. */
+    public void pauseReading() {
+        if (!mReading || mPaused) return;
+        mPaused = true;
+        TtsPlayerService.pause(this);
+    }
+
+    /** Resume from where we paused; the button flips to ⏸. No-op if not paused. */
+    public void resumeReading() {
+        if (!mReading || !mPaused) return;
+        mPaused = false;
+        TtsPlayerService.resume(this);
+    }
+
+    /** Whether reading is paused (vs. actively playing). Drives the button icon. */
+    public boolean isPaused() { return mPaused; }
 
     /** Read the current screen's body text, then stop. */
     public void readScreen() {
@@ -109,6 +129,7 @@ public class TtsAccessibilityService extends AccessibilityService {
     /** Stop any in-progress reading. */
     public void stopReading() {
         mReading = false;
+        mPaused = false;
         TtsPlayerService.sOnIdle = null;
         startService(new Intent(this, TtsPlayerService.class)
             .setAction(TtsPlayerService.ACTION_STOP));
