@@ -1007,7 +1007,7 @@ create_package() {
     
     if [ -d "$custom_bin_dir" ]; then
         # Copy custom commands
-        for cmd in fontsize font textcolor backgroundcolor sysmon debug_proc; do
+        for cmd in fontsize font textcolor backgroundcolor; do
             if [ -f "$custom_bin_dir/$cmd" ]; then
                 cp "$custom_bin_dir/$cmd" "$pkg_dir/bin/"
                 log_info "Copied custom command: $cmd"

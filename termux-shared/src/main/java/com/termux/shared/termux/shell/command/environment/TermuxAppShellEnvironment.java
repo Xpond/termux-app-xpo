@@ -15,7 +15,6 @@ import com.termux.shared.shell.command.environment.ShellEnvironmentUtils;
 import com.termux.shared.termux.TermuxBootstrap;
 import com.termux.shared.termux.TermuxConstants;
 import com.termux.shared.termux.TermuxUtils;
-import com.termux.shared.termux.shell.am.TermuxAmSocketServer;
 
 import java.util.HashMap;
 
@@ -73,11 +72,6 @@ public class TermuxAppShellEnvironment {
     public static final String ENV_TERMUX_APP__FILES_DIR = TERMUX_APP_ENV_PREFIX + "FILES_DIR";
 
 
-    /** Environment variable for the Termux app {@link TermuxAmSocketServer#getTermuxAppAMSocketServerEnabled(Context)}. */
-    public static final String ENV_TERMUX_APP__AM_SOCKET_SERVER_ENABLED = TERMUX_APP_ENV_PREFIX + "AM_SOCKET_SERVER_ENABLED";
-
-
-
     /** Get shell environment for Termux app. */
     @Nullable
     public static HashMap<String, String> getEnvironment(@NonNull Context currentPackageContext) {
@@ -128,10 +122,6 @@ public class TermuxAppShellEnvironment {
             if (TermuxBootstrap.TERMUX_APP_PACKAGE_VARIANT != null)
                 environment.put(ENV_TERMUX_APP__PACKAGE_VARIANT, TermuxBootstrap.TERMUX_APP_PACKAGE_VARIANT.getName());
 
-            // Will not be set for plugins
-            ShellEnvironmentUtils.putToEnvIfSet(environment, ENV_TERMUX_APP__AM_SOCKET_SERVER_ENABLED,
-                TermuxAmSocketServer.getTermuxAppAMSocketServerEnabled(currentPackageContext));
-
             String filesDirPath = currentPackageContext.getFilesDir().getAbsolutePath();
             ShellEnvironmentUtils.putToEnvIfSet(environment, ENV_TERMUX_APP__FILES_DIR, filesDirPath);
 
@@ -159,14 +149,6 @@ public class TermuxAppShellEnvironment {
             ShellEnvironmentUtils.putToEnvIfSet(environment, ENV_TERMUX_APP__APK_RELEASE,
                 TermuxUtils.getAPKRelease(signingCertificateSHA256Digest).replaceAll("[^a-zA-Z]", "_").toUpperCase());
         }
-    }
-
-    /** Update {@link #ENV_TERMUX_APP__AM_SOCKET_SERVER_ENABLED} value in {@code environment}. */
-    public synchronized static void updateTermuxAppAMSocketServerEnabled(@NonNull Context currentPackageContext) {
-        if (termuxAppEnvironment == null) return;
-        termuxAppEnvironment.remove(ENV_TERMUX_APP__AM_SOCKET_SERVER_ENABLED);
-        ShellEnvironmentUtils.putToEnvIfSet(termuxAppEnvironment, ENV_TERMUX_APP__AM_SOCKET_SERVER_ENABLED,
-            TermuxAmSocketServer.getTermuxAppAMSocketServerEnabled(currentPackageContext));
     }
 
 }

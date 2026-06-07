@@ -494,8 +494,16 @@ public final class TerminalView extends View {
         mEmulator.clearScrollCounter();
 
         invalidate();
-        if (mAccessibilityEnabled) setContentDescription(getText());
+        // Updating the content description scrapes the whole visible screen into a
+        // String on the main thread; doing it per output chunk lags typing badly
+        // (SSH echoes a char at a time). Debounce so it runs once output settles.
+        if (mAccessibilityEnabled) {
+            removeCallbacks(mAccessibilityUpdater);
+            postDelayed(mAccessibilityUpdater, 250);
+        }
     }
+
+    private final Runnable mAccessibilityUpdater = () -> setContentDescription(getText());
 
     /** This must be called by the hosting activity in {@link Activity#onContextMenuClosed(Menu)}
      * when context menu for the {@link TerminalView} is started by
@@ -1439,6 +1447,8 @@ public final class TerminalView extends View {
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
+
+        removeCallbacks(mAccessibilityUpdater);
 
         if (mTextSelectionCursorController != null) {
             // Might solve the following exception

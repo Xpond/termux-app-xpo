@@ -31,16 +31,4 @@ LOCAL_MODULE := backgroundcolor
 LOCAL_SRC_FILES := backgroundcolor.c
 include $(BUILD_EXECUTABLE)
 
-# Build sysmon executable
-include $(CLEAR_VARS)
-LOCAL_MODULE := sysmon
-LOCAL_SRC_FILES := sysmon.c
-include $(BUILD_EXECUTABLE)
-
-# Build debug_proc executable
-include $(CLEAR_VARS)
-LOCAL_MODULE := debug_proc
-LOCAL_SRC_FILES := debug_proc.c
-include $(BUILD_EXECUTABLE)
-
 

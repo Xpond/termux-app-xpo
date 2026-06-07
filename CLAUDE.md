@@ -15,8 +15,6 @@ Full architecture: `docs/xport.md`.
   `backgroundcolor` use the **file-trigger pattern** (C writes `~/.X` +
   `~/.X_changed`; `TermuxActivity` polls and applies). No `am`/broadcasts — the
   minimal shell can't reach framework tools.
-- **sysmon is broken** (uses `am broadcast`, unreachable from the shell). Kept
-  only for faithful reproduction; rewrite to file-trigger to fix.
 - **On-device LLM** (`llm`): runs GGUF models via a pinned `llama.cpp` (CPU-only,
   built with an isolated r27c NDK). Models user-supplied in `~/models`.
 - **Local LLM API** (`llmd`): serves a model as an OpenAI-compatible HTTP API on

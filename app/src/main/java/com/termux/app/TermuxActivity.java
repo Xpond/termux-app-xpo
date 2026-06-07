@@ -26,9 +26,6 @@ import android.widget.ListView;
 import android.widget.RelativeLayout;
 import android.widget.Toast;
 import java.io.*;
-import java.net.*;
-import java.util.zip.*;
-import android.os.AsyncTask;
 
 import com.xport.terminal.R;
 import com.termux.app.terminal.TermuxActivityRootView;
@@ -194,7 +191,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private static final int CONTEXT_MENU_RESET_TERMINAL_ID = 3;
     private static final int CONTEXT_MENU_KILL_PROCESS_ID = 4;
     private static final int CONTEXT_MENU_TOGGLE_KEEP_SCREEN_ON = 6;
-    private static final int CONTEXT_MENU_REPORT_ID = 9;
 
     private static final String ARG_TERMINAL_TOOLBAR_TEXT_INPUT = "terminal_toolbar_text_input";
     private static final String ARG_ACTIVITY_RECREATED = "activity_recreated";
@@ -254,9 +250,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             mIsInvalidState = true;
             return;
         }
-
-        // Check and download bootstrap if needed
-        // checkAndDownloadBootstrap(); // Temporarily disabled for debugging
 
         setMargins();
 
@@ -704,7 +697,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         menu.add(Menu.NONE, CONTEXT_MENU_RESET_TERMINAL_ID, Menu.NONE, R.string.action_reset_terminal);
         menu.add(Menu.NONE, CONTEXT_MENU_KILL_PROCESS_ID, Menu.NONE, getResources().getString(R.string.action_kill_process, getCurrentSession().getPid())).setEnabled(currentSession.isRunning());
         menu.add(Menu.NONE, CONTEXT_MENU_TOGGLE_KEEP_SCREEN_ON, Menu.NONE, R.string.action_toggle_keep_screen_on).setCheckable(true).setChecked(mPreferences.shouldKeepScreenOn());
-        menu.add(Menu.NONE, CONTEXT_MENU_REPORT_ID, Menu.NONE, R.string.action_report_issue);
     }
 
     /** Hook system menu to show context menu instead. */
@@ -742,9 +734,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 return true;
             case CONTEXT_MENU_TOGGLE_KEEP_SCREEN_ON:
                 toggleKeepScreenOn();
-                return true;
-            case CONTEXT_MENU_REPORT_ID:
-                mTermuxTerminalViewClient.reportIssueFromTranscript();
                 return true;
             default:
                 return super.onContextItemSelected(item);
@@ -1043,100 +1032,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         return intent;
     }
 
-    private void checkAndDownloadBootstrap() {
-        File bootstrapDir = new File(TermuxConstants.TERMUX_FILES_DIR_PATH + "/usr");
-        File bootstrapMarker = new File(TermuxConstants.TERMUX_FILES_DIR_PATH + "/.bootstrap_installed");
-        
-        if (!bootstrapMarker.exists()) {
-            new BootstrapDownloadTask().execute();
-        }
-    }
-
-    private class BootstrapDownloadTask extends AsyncTask<Void, String, Boolean> {
-        @Override
-        protected void onPreExecute() {
-            Toast.makeText(TermuxActivity.this, "Downloading bootstrap...", Toast.LENGTH_SHORT).show();
-        }
-
-        @Override
-        protected Boolean doInBackground(Void... voids) {
-            try {
-                String bootstrapUrl = "http://168.231.118.168:8000/xport-bootstrap-arm64-v8a.zip";
-                File downloadFile = new File(TermuxConstants.TERMUX_FILES_DIR_PATH + "/bootstrap.zip");
-                
-                // Download bootstrap
-                URL url = new URL(bootstrapUrl);
-                URLConnection connection = url.openConnection();
-                InputStream input = connection.getInputStream();
-                FileOutputStream output = new FileOutputStream(downloadFile);
-                
-                byte[] buffer = new byte[4096];
-                int bytesRead;
-                while ((bytesRead = input.read(buffer)) != -1) {
-                    output.write(buffer, 0, bytesRead);
-                }
-                
-                input.close();
-                output.close();
-                
-                // Extract bootstrap
-                extractZip(downloadFile, new File(TermuxConstants.TERMUX_FILES_DIR_PATH));
-                
-                // Mark as installed
-                File marker = new File(TermuxConstants.TERMUX_FILES_DIR_PATH + "/.bootstrap_installed");
-                marker.createNewFile();
-                
-                // Cleanup
-                downloadFile.delete();
-                
-                return true;
-            } catch (Exception e) {
-                Logger.logError(LOG_TAG, "Bootstrap download failed: " + e.getMessage());
-                return false;
-            }
-        }
-
-        @Override
-        protected void onPostExecute(Boolean success) {
-            if (success) {
-                Toast.makeText(TermuxActivity.this, "Bootstrap installed successfully!", Toast.LENGTH_SHORT).show();
-            } else {
-                Toast.makeText(TermuxActivity.this, "Bootstrap download failed", Toast.LENGTH_SHORT).show();
-            }
-        }
-
-        private void extractZip(File zipFile, File targetDir) throws IOException {
-            ZipInputStream zis = new ZipInputStream(new FileInputStream(zipFile));
-            ZipEntry entry;
-            
-            while ((entry = zis.getNextEntry()) != null) {
-                File file = new File(targetDir, entry.getName());
-                
-                if (entry.isDirectory()) {
-                    file.mkdirs();
-                } else {
-                    file.getParentFile().mkdirs();
-                    FileOutputStream fos = new FileOutputStream(file);
-                    
-                    byte[] buffer = new byte[1024];
-                    int length;
-                    while ((length = zis.read(buffer)) > 0) {
-                        fos.write(buffer, 0, length);
-                    }
-                    
-                    fos.close();
-                    
-                    // Set executable permissions for binaries
-                    if (file.getPath().contains("/bin/") || file.getPath().contains("/usr/bin/")) {
-                        file.setExecutable(true);
-                    }
-                }
-                zis.closeEntry();
-            }
-            zis.close();
-        }
-    }
-    
     /**
      * Check for font size changes and refresh terminal if needed
      */

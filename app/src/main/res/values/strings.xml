@@ -87,10 +87,6 @@
     <string name="action_style_terminal">Style</string>
     <string name="action_toggle_keep_screen_on">Keep screen on</string>
 
-    <string name="action_report_issue">Report Issue</string>
-    <string name="msg_generating_report">Generating Report</string>
-    <string name="msg_add_termux_debug_info">Add xport debug info to report?</string>
-
     <string name="error_styling_not_installed">The xport Styling Plugin App is not installed.</string>
     <string name="action_styling_install">Install</string>
 

@@ -11,7 +11,6 @@ import com.termux.shared.termux.file.TermuxFileUtils;
 import com.termux.shared.termux.settings.preferences.TermuxAppSharedPreferences;
 import com.termux.shared.termux.settings.properties.TermuxAppSharedProperties;
 import com.termux.shared.termux.shell.command.environment.TermuxShellEnvironment;
-import com.termux.shared.termux.shell.am.TermuxAmSocketServer;
 import com.termux.shared.termux.shell.TermuxShellManager;
 import com.termux.shared.termux.theme.TermuxThemeUtils;
 
@@ -56,14 +55,11 @@ public class TermuxApplication extends Application {
                 Logger.logErrorExtended(LOG_TAG, "Create apps/termux-app directory failed\n" + error);
                 return;
             }
-
-            // Setup termux-am-socket server
-            TermuxAmSocketServer.setupTermuxAmSocketServer(context);
         } else {
             Logger.logErrorExtended(LOG_TAG, "Termux files directory is not accessible\n" + error);
         }
 
-        // Init TermuxShellEnvironment constants and caches after everything has been setup including termux-am-socket server
+        // Init TermuxShellEnvironment constants and caches after everything has been setup
         TermuxShellEnvironment.init(this);
 
         if (isTermuxFilesDirectoryAccessible) {

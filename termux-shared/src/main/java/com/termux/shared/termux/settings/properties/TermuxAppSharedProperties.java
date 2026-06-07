@@ -12,11 +12,7 @@ public class TermuxAppSharedProperties {
         }
         return instance;
     }
-    
-    public boolean shouldRunTermuxAmSocketServer() {
-        return false; // Disable by default for xport
-    }
-    
+
     // Directory management methods
     public String getDefaultWorkingDirectory() {
         return "/data/data/com.xport.terminal/files/home";

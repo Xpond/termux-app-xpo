@@ -53,8 +53,6 @@ the bootstrap script (now packages them) → `assembleDebug` again.
 | `font` | `font.c` | file-trigger |
 | `textcolor` | `textcolor.c` | file-trigger |
 | `backgroundcolor` | `backgroundcolor.c` | file-trigger |
-| `sysmon` | `sysmon.c` | broadcast (**broken**) |
-| `debug_proc` | `debug_proc.c` | prints `/proc/*` (diagnostic) |
 
 Also `libxport-bootstrap.so` (`xport-bootstrap.c`), the JNI bootstrap helper.
 
@@ -71,14 +69,6 @@ manager classes:
 - `ColorThemeManager` / `xportStyleRenderer` in `terminal-view`.
 
 No `am`, no broadcasts — the minimal shell can't reach Android framework tools.
-
-### sysmon — does NOT work (kept for faithful reproduction)
-
-`sysmon.c` shells out to `am broadcast -a com.xport.terminal.SYSMON`, received by
-`SysmonReceiver` → `SystemMonitor` (battery/cpu/mem/uptime via Android APIs).
-It never worked: the toybox shell can't reach `am`/`cmd`
-(`cmd: inaccessible or not found`), and the receiver is `exported="false"` so no
-external uid can reach it either. To fix: rewrite to the file-trigger pattern.
 
 ## SSH usage
 
