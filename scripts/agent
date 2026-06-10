@@ -1,0 +1,54 @@
+#!/system/bin/sh
+# xport phone-control agent. `agent "<goal>"` opens a CHAT: the app reads the
+# screen (accessibility), asks the local llmd model for one action, performs
+# it, and repeats — and you talk to it right here. Its replies stream into the
+# terminal; anything you type is a follow-up or mid-task correction ("no, the
+# other one"). Switching back to xport pauses a run; typing resumes it.
+#
+# Plumbing: we can't reach the app with am/broadcasts (the minimal shell
+# can't), so triggers are files the app's AgentControl polls — .agent_start
+# (new goal), .agent_msg (follow-up), .agent_stop. Output streams via
+# tail -f on ~/.agent_log. Ctrl-C or Ctrl-D ends the chat AND the run.
+
+HOME_DIR="/data/data/com.xport.terminal/files/home"
+START="$HOME_DIR/.agent_start"
+MSG="$HOME_DIR/.agent_msg"
+STOP="$HOME_DIR/.agent_stop"
+LOG="$HOME_DIR/.agent_log"
+
+if [ "$1" = "stop" ]; then
+  : > "$STOP"
+  echo "stop requested (also: just opening xport pauses a running agent)"
+  exit 0
+fi
+
+if [ -z "$1" ]; then
+  echo "Usage: agent \"<goal>\"   e.g.  agent \"open Clock and start the stopwatch\""
+  echo "       agent stop        abort a running agent"
+  echo "Opens a chat: type follow-ups or corrections, Ctrl-C/Ctrl-D to end."
+  echo "Needs: Accessibility (Settings > Accessibility > xport) on, and 'llmd start'."
+  echo "Name the app in the goal and the agent opens it itself (open_app tool)."
+  exit 1
+fi
+
+: > "$LOG"            # clear last run's log
+echo "$1" > "$START"  # trigger: line 1 = goal
+
+# toybox sh leaves the session tty raw (-icrnl -echo): Enter sends \r which
+# never ends a line, so `read` hangs forever and typing shows nothing
+# (verified live with stty -a). Set cooked mode for the chat; the shell's
+# line editor re-arms its own mode at the next prompt.
+stty icrnl icanon echo 2>/dev/null
+
+tail -f "$LOG" &
+TAIL=$!
+quit() { : > "$STOP"; kill "$TAIL" 2>/dev/null; exit 0; }
+trap quit INT TERM
+
+# echo, not printf: the minimal bootstrap has no printf and it's not an mksh
+# builtin — the failed redirect left an EMPTY .agent_msg that AgentControl
+# silently dropped (that bug hid behind the tty one).
+while IFS= read -r line; do
+  [ -n "$line" ] && echo "$line" > "$MSG"
+done
+quit

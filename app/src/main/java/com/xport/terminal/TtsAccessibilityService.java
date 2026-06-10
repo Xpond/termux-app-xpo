@@ -81,6 +81,15 @@ public class TtsAccessibilityService extends AccessibilityService {
     /** Whether reading is paused (vs. actively playing). Drives the button icon. */
     public boolean isPaused() { return mPaused; }
 
+    /** Agent: compact JSON inventory of actionable elements on the current screen.
+     *  Caller must be off the UI thread (cross-process IPC walk). See {@link AgentEyes}. */
+    public String snapshot() { return AgentEyes.snapshot(this); }
+
+    /** Agent: perform one action on a snapshot index. Returns true if dispatched. */
+    public boolean act(String verb, int index, String text) {
+        return AgentEyes.act(this, verb, index, text);
+    }
+
     /** Read the current screen's body text, then stop. */
     public void readScreen() {
         beginRead();

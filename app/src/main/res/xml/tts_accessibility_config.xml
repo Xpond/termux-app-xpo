@@ -9,5 +9,6 @@
     android:accessibilityEventTypes=""
     android:accessibilityFeedbackType="feedbackGeneric"
     android:canRetrieveWindowContent="true"
+    android:canPerformGestures="true"
     android:description="@string/tts_accessibility_description"
     android:notificationTimeout="1000" />

@@ -17,6 +17,7 @@ STATUS="$HOME_DIR/.llmd_status"
 START_REQ="$HOME_DIR/.llmd_start"
 STOP_REQ="$HOME_DIR/.llmd_stop"
 PORT_FILE="$HOME_DIR/.llmd_port"
+MODEL_FILE="$HOME_DIR/.llmd_model"   # served model's name, for API consumers (agent)
 DEFAULT_PORT=8080
 
 usage() {
@@ -72,6 +73,9 @@ do_start() {
   port="${2:-$DEFAULT_PORT}"
   token="$(ensure_token)"
   echo "$port" > "$PORT_FILE"
+  # llama-server runs in router mode (no default model), so a chat request must
+  # name the model. Record the stem (= what /v1/models reports) for API consumers.
+  basename "$model" .gguf > "$MODEL_FILE"
   echo "Starting LLM API server"
   echo "  model: $model"
   echo "  url:   http://127.0.0.1:$port  (token: $token)"

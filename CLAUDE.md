@@ -35,5 +35,21 @@ Full architecture: `docs/xport.md`.
   All call `TtsPlayerService.speak()`. In-process, no HTTP/daemon (unlike `llmd` —
   "speak this" is one-way). Java in `app/.../com/xport/terminal/Tts*.java`.
   Needs Accessibility + overlay permissions. Details: `docs/ttsoverlay.md`.
+- **Phone-control agent** (`agent "<goal>"`): native **tool-calling** loop. The
+  a11y service (read-aloud's `snapshot()`/`act()` in `AgentEyes`) is the eyes/
+  hands; an **OpenAI-compatible chat API on `127.0.0.1`** is the brain — on-device
+  `llmd`, or a full model on a PC via `adb reverse` (the default). The model calls
+  tools (`click`/`type`/`scroll`/`back`/`home`/`wait`/`open_app`/`done`); each
+  result is the settled post-action screen; **the model owns completion**
+  (`done(summary)` — for question goals the summary is the answer). Behavioral
+  instructions must ride in the **user message** (gemma ignores system prompt).
+  **It's a chat**: the terminal streams replies and typed lines feed the same
+  conversation (`.agent_msg`); `done`/plain text yield the turn, not the session
+  (conversation is static — Android kills the idle service between turns).
+  Context stays flat: all but the last 2 screens are pruned before each call.
+  Switching to xport *pauses* the run (typing resumes); `agent stop` ends it.
+  `AgentControl` polls `.agent_start`/`.agent_msg`/`.agent_stop`. Wrapper traps:
+  tty is raw (`stty icrnl` needed) and bootstrap has no `printf`. Needs
+  Accessibility + overlay. Details: `docs/agent.md`.
 
 ---

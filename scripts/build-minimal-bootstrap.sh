@@ -1033,9 +1033,11 @@ create_package() {
                   libllama-common libllama libggml libggml-cpu libggml-base; do
             cp "$llama_bin/$so.so" "$pkg_dir/lib/"
         done
-        # The `llm` (pull/run) and `llmd` (local API server) wrappers are shell.
+        # The `llm` (pull/run), `llmd` (local API server) and `agent`
+        # (phone-control loop, talks to llmd) wrappers are shell.
         cp "$SCRIPT_DIR/llm" "$pkg_dir/bin/llm"
         cp "$SCRIPT_DIR/llmd" "$pkg_dir/bin/llmd"
+        cp "$SCRIPT_DIR/agent" "$pkg_dir/bin/agent"
     elif [ "$BUILD_LLAMA" = "1" ]; then
         log_warning "llama.cpp binaries not found - run build_llama first"
     fi

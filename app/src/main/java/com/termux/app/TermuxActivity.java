@@ -175,6 +175,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     /** Bridges the `llmd` wrapper to the local LLM API foreground service. */
     private com.xport.terminal.LlmServerControl mLlmServerControl;
 
+    /** Bridges the `agent` wrapper to the phone-control agent loop. */
+    private com.xport.terminal.AgentControl mAgentControl;
+
     /** Floating button that triggers read-aloud of the current screen. */
     private com.xport.terminal.TtsFloatingButton mTtsButton;
 
@@ -220,6 +223,11 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         // activity is foregrounded, which is when the user issues the command.
         mLlmServerControl = new com.xport.terminal.LlmServerControl(this);
         mLlmServerControl.start();
+
+        // `agent "<goal>"` drives the phone-control loop via a trigger file (1Hz
+        // poll, not a FileObserver — a 2nd observer on home breaks the first).
+        mAgentControl = new com.xport.terminal.AgentControl(this);
+        mAgentControl.start();
 
         // Floating read-aloud trigger: tap to read the current screen via the
         // accessibility service. Created here, but only shown while the a11y
@@ -408,6 +416,11 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         if (mLlmServerControl != null) {
             mLlmServerControl.stop();
             mLlmServerControl = null;
+        }
+
+        if (mAgentControl != null) {
+            mAgentControl.stop();
+            mAgentControl = null;
         }
 
         if (mTtsButton != null) {

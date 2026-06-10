@@ -31,6 +31,7 @@
         android:allowBackup="false"
         android:banner="@drawable/banner"
         android:extractNativeLibs="true"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/application_name"
         android:requestLegacyExternalStorage="true"
@@ -92,6 +93,12 @@
              Target SDK 28: no foregroundServiceType / specialUse needed. -->
         <service
             android:name="com.xport.terminal.LlmServerService"
+            android:exported="false" />
+
+        <!-- Phone-control agent loop (observe→decide→act). Plain service: a
+             short, user-initiated run, not a long-lived background server. -->
+        <service
+            android:name="com.xport.terminal.AgentService"
             android:exported="false" />
 
         <!-- Read-aloud: synthesizes + plays the screen text via KittenTTS.
