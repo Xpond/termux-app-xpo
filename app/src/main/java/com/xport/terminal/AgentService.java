@@ -27,11 +27,15 @@ import java.net.URL;
  * instead of prose we regex (the old parse-a-verb loop caused runaway clicking:
  * the model had no channel to say "stop" or "wait" — see docs/agent.md).
  *
- * The brain is whatever serves an OpenAI-compatible chat API on 127.0.0.1:
- * on-device {@link LlmServerService} (`llmd`), or a full model on a paired PC
- * via `adb reverse` (the default — verified: Ollama gemma4:e4b emits clean
- * tool_calls and a `reasoning` field we log). Port/model/token come from the
- * same `.llmd_*` files `llmd` writes.
+ * The brain is whatever serves an OpenAI-compatible chat API at host:port:
+ * on-device {@link LlmServerService} (`llmd`), or a full model on a paired PC.
+ * The PC's Ollama is reached either over the Tailscale tailnet by MagicDNS name
+ * (set `.llmd_host`, no adb needed) or, classically, on loopback via
+ * `adb reverse` (verified: Ollama gemma4:e4b emits clean tool_calls and a
+ * `reasoning` field we log). Host/port/model/token come from the `.llmd_*`
+ * files; host defaults to 127.0.0.1 so llmd and the adb-reverse path are
+ * untouched. Cleartext to non-loopback hosts must be allowed in
+ * res/xml/network_security_config.xml.
  *
  * The model owns completion: `done(summary)` and plain text with no tool call
  * are messages to the user — they YIELD THE TURN, they don't end the session.
@@ -55,6 +59,7 @@ public class AgentService extends Service {
     private static final String MODEL_FILE = HOME + "/.llmd_model";
     private static final String PORT_FILE = HOME + "/.llmd_port";
     private static final String TOKEN_FILE = HOME + "/.llmd_token";
+    private static final String HOST_FILE = HOME + "/.llmd_host";
 
     static final String EXTRA_GOAL = "goal";
     static final String EXTRA_STOP = "stop";
@@ -389,11 +394,12 @@ public class AgentService extends Service {
     }
 
     private JSONObject post(String body) {
+        String host = read(HOST_FILE, "127.0.0.1");
         String port = read(PORT_FILE, "8080");
         String token = read(TOKEN_FILE, "");
         HttpURLConnection c = null;
         try {
-            URL url = new URL("http://127.0.0.1:" + port + "/v1/chat/completions");
+            URL url = new URL("http://" + host + ":" + port + "/v1/chat/completions");
             c = (HttpURLConnection) url.openConnection();
             c.setRequestMethod("POST");
             c.setRequestProperty("Content-Type", "application/json");
@@ -403,12 +409,15 @@ public class AgentService extends Service {
             c.setReadTimeout(60000);
             try (OutputStream os = c.getOutputStream()) { os.write(body.getBytes("UTF-8")); }
             int code = c.getResponseCode();
-            if (code != 200) { log("  http " + code); return null; }
-            StringBuilder sb = new StringBuilder();
-            try (BufferedReader br = new BufferedReader(new InputStreamReader(c.getInputStream(), "UTF-8"))) {
-                String ln; while ((ln = br.readLine()) != null) sb.append(ln);
+            if (code != 200) {
+                // Surface the server's reason — Ollama returns 400 with a body
+                // like "model is required" when ~/.llmd_model is empty; an opaque
+                // "http 400" once cost a debugging session.
+                String err = readStream(c.getErrorStream());
+                log("  http " + code + (err.isEmpty() ? "" : ": " + err));
+                return null;
             }
-            JSONObject choice = new JSONObject(sb.toString()).getJSONArray("choices").getJSONObject(0);
+            JSONObject choice = new JSONObject(readStream(c.getInputStream())).getJSONArray("choices").getJSONObject(0);
             String fr = choice.optString("finish_reason", "");
             if (!"stop".equals(fr) && !"tool_calls".equals(fr)) log("  finish_reason: " + fr);
             return choice.getJSONObject("message");
@@ -422,6 +431,16 @@ public class AgentService extends Service {
 
     private static void sleep(long ms) {
         try { Thread.sleep(ms); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+    }
+
+    /** Drain a connection stream to a String (null-safe; error streams can be null). */
+    private static String readStream(java.io.InputStream in) {
+        if (in == null) return "";
+        StringBuilder sb = new StringBuilder();
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(in, "UTF-8"))) {
+            String ln; while ((ln = br.readLine()) != null) sb.append(ln);
+        } catch (Exception e) { /* best effort */ }
+        return sb.toString();
     }
 
     private static String read(String path, String dflt) {

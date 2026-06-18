@@ -24,21 +24,27 @@ explanation), `wait` is its honest "show me again", and its `reasoning` is logge
 
 ## The brain is an external API (the key design choice)
 
-The agent talks **HTTP** to whatever serves `127.0.0.1:<port>/v1/chat/completions`
-— it's just an OpenAI client. That port can be:
+The agent talks **HTTP** to whatever serves `<host>:<port>/v1/chat/completions`
+— it's just an OpenAI client. That endpoint can be:
 
-- the **on-device** model ([`llmd`](llmd.md) → `llama-server`), or
-- a **full-size model on a paired PC**, tunnelled in with one command:
-  `adb reverse tcp:<port> tcp:<port>` maps the phone's `127.0.0.1:<port>` to the
-  PC's, so the same loopback HTTP call reaches e.g. a local **Ollama**.
+- the **on-device** model ([`llmd`](llmd.md) → `llama-server`) on `127.0.0.1`, or
+- a **full-size model on a paired PC** (e.g. local **Ollama**), reached two ways:
+  - **Tailscale (default now)** — the phone hits the PC's MagicDNS name directly
+    over the tailnet: `~/.llmd_host = xpo1.beetal-newton.ts.net`, port `11434`.
+    No USB, no wireless debugging — the PC just has to be on the tailnet. The
+    link is WireGuard-encrypted end to end.
+  - **`adb reverse`** — `adb reverse tcp:<port> tcp:<port>` maps the phone's
+    `127.0.0.1:<port>` to the PC's, so the loopback call reaches Ollama. Needs a
+    USB/wireless-debug connection; the fallback when Tailscale isn't up.
 
 Why external is the default: on-device 1.5–4B models can't emit reliable
 tool-calls (learned in the first attempt). A PC model (Ollama `gemma4:e4b`)
-does — verified emitting clean `tool_calls` plus a `reasoning` field. The HTTP
-boundary costs nothing (loopback) and makes the brain a one-line swap: the agent
-reads `~/.llmd_port`, `~/.llmd_model`, `~/.llmd_token` (the same files `llmd`
-writes), so pointing those at any server changes the model with no code change.
-A narrow `network_security_config.xml` permits cleartext to `127.0.0.1` only.
+does — verified emitting clean `tool_calls` plus a `reasoning` field. The brain
+is a one-line swap: the agent reads `~/.llmd_host`, `~/.llmd_port`,
+`~/.llmd_model`, `~/.llmd_token` (the `.llmd_*` files `llmd` writes; `host`
+defaults to `127.0.0.1`), so pointing those at any server changes the brain with
+no code change. `network_security_config.xml` permits cleartext to `127.0.0.1`
+and the PC's tailnet host only — never the open LAN.
 
 ## Usage — it's a chat
 
@@ -49,8 +55,10 @@ agent stop      # abort and forget the conversation
 ```
 
 1. Enable **Settings > Accessibility > xport** and **Display over other apps**.
-2. Have a chat API answering on the configured port — `llmd start <model>`, or a
-   PC server reached via `adb reverse`.
+2. Have a chat API answering at the configured host:port — `llmd start <model>`
+   on-device, or a PC server: set `~/.llmd_host` to the PC's tailnet name (e.g.
+   `xpo1.beetal-newton.ts.net`) and `~/.llmd_port` to `11434`, or use
+   `adb reverse` with host left at `127.0.0.1`.
 3. Run `agent "<goal>"`. The terminal becomes the chat: progress and replies
    stream in, and **anything you type is a message into the same conversation**
    — a follow-up after it answers ("now mark it done"), or a mid-run correction

@@ -37,8 +37,9 @@ Full architecture: `docs/xport.md`.
   Needs Accessibility + overlay permissions. Details: `docs/ttsoverlay.md`.
 - **Phone-control agent** (`agent "<goal>"`): native **tool-calling** loop. The
   a11y service (read-aloud's `snapshot()`/`act()` in `AgentEyes`) is the eyes/
-  hands; an **OpenAI-compatible chat API on `127.0.0.1`** is the brain — on-device
-  `llmd`, or a full model on a PC via `adb reverse` (the default). The model calls
+  hands; an **OpenAI-compatible chat API at `host:port`** is the brain — on-device
+  `llmd`, or a PC model reached over **Tailscale** by MagicDNS name (`~/.llmd_host`,
+  the default now) or via `adb reverse` (host left `127.0.0.1`). The model calls
   tools (`click`/`type`/`scroll`/`back`/`home`/`wait`/`open_app`/`done`); each
   result is the settled post-action screen; **the model owns completion**
   (`done(summary)` — for question goals the summary is the answer). Behavioral

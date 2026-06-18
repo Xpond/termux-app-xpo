@@ -1,10 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The agent talks to the local llmd HTTP API over http://127.0.0.1. Android
-     blocks cleartext by default, so permit it for loopback ONLY (never the LAN);
-     all other traffic stays cleartext-forbidden. -->
+<!-- The agent's brain is an OpenAI-compatible HTTP API. By default that's llmd on
+     127.0.0.1 (loopback) or a PC's Ollama tunnelled to loopback via `adb reverse`.
+     Cleartext is permitted ONLY for the exact hosts below, never the open LAN:
+       - 127.0.0.1 / localhost: on-device llmd and the adb-reverse path.
+       - xpo1.beetal-newton.ts.net: the PC's Ollama reached directly over the
+         Tailscale tailnet (MagicDNS), so no adb reverse / wireless debugging is
+         needed. The link is WireGuard-encrypted; Android still sees plain HTTP,
+         hence this explicit allow. Set ~/.llmd_host to this name to use it. -->
 <network-security-config>
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="false">127.0.0.1</domain>
         <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">xpo1.beetal-newton.ts.net</domain>
     </domain-config>
 </network-security-config>
